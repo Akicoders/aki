@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, AsyncGenerator, Literal, Optional
 from dataclasses import dataclass
+from typing import Any, AsyncGenerator, Literal, Optional, cast
 
 import httpx
 from openai import AsyncOpenAI
@@ -30,6 +30,10 @@ class ChatResponse:
 class EmbeddingResponse:
     embeddings: list[list[float]]
     usage: dict[str, int]
+
+
+class QwenStructuredJSONError(RuntimeError):
+    """Raised when Qwen cannot return usable structured JSON."""
 
 
 class QwenClient:
@@ -105,6 +109,42 @@ class QwenClient:
             finish_reason=choice.finish_reason or "stop",
         )
 
+    async def structured_json(
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        max_tokens: Optional[int] = None,
+    ) -> dict[str, Any]:
+        """Request a JSON object from Qwen and parse it strictly."""
+        json_system_prompt = system_prompt or (
+            "You are a structured extraction assistant. Return only valid JSON. "
+            "Do not wrap the response in Markdown fences or add commentary."
+        )
+        messages: list[ChatCompletionMessageParam] = [
+            {"role": "system", "content": json_system_prompt},
+            {"role": "user", "content": prompt},
+        ]
+
+        try:
+            response = await self.chat(
+                messages,
+                tool_choice="none",
+                temperature=0.0,
+                max_tokens=max_tokens,
+            )
+        except Exception as exc:  # external API failures are recoverable by callers
+            raise QwenStructuredJSONError(f"Qwen request failed: {exc}") from exc
+
+        content = cast(ChatResponse, response).content.strip()
+        try:
+            parsed = json.loads(_strip_json_fence(content))
+        except json.JSONDecodeError as exc:
+            raise QwenStructuredJSONError("Qwen response was not valid JSON") from exc
+
+        if not isinstance(parsed, dict):
+            raise QwenStructuredJSONError("Qwen response must be a JSON object")
+        return parsed
+
     async def _chat_stream(
         self,
         messages: list[ChatCompletionMessageParam],
@@ -166,6 +206,15 @@ class QwenClient:
                         function=fn_schema,
                     ))
         return tools
+
+
+def _strip_json_fence(content: str) -> str:
+    if not content.startswith("```"):
+        return content
+    lines = content.splitlines()
+    if len(lines) >= 3 and lines[-1].strip() == "```":
+        return "\n".join(lines[1:-1]).removeprefix("json").strip()
+    return content
 
 
 # Global client instance

@@ -92,7 +92,11 @@ def test_memory_save_rejects_invalid_kind_without_write(memory_repo):
 
 
 def test_qwen_dependent_tools_return_graceful_errors(memory_repo):
-    handlers = MemoryToolHandlers(repository=memory_repo)
+    class FailingQwen:
+        async def structured_json(self, prompt: str, **kwargs):
+            raise RuntimeError("qwen unavailable")
+
+    handlers = MemoryToolHandlers(repository=memory_repo, qwen_client=FailingQwen())
 
     extract = handlers.memory_extract(text="Decision: use MCP", project="demo")
     explain = handlers.memory_explain(query="MCP", project="demo")
@@ -100,12 +104,10 @@ def test_qwen_dependent_tools_return_graceful_errors(memory_repo):
     assert extract == {
         "ok": False,
         "project": "demo",
-        "errors": ["Qwen extraction not yet implemented"],
+        "errors": ["Qwen extraction failed: qwen unavailable"],
         "items": [],
     }
-    assert explain == {
-        "ok": False,
-        "project": "demo",
-        "errors": ["Qwen extraction not yet implemented"],
-        "items": [],
-    }
+    assert explain["ok"] is True
+    assert explain["project"] == "demo"
+    assert explain["errors"] == ["Qwen explanation failed: qwen unavailable"]
+    assert explain["items"] == []
