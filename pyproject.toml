@@ -3,7 +3,7 @@ name = "aki-memory"
 version = "0.1.0"
 description = "Aki is an AI agent for portable project memory, powered by Qwen and delivered through MCP"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
 authors = [
     {name = "Paul", email = "paul@example.com"}
 ]
