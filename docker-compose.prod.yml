@@ -1,0 +1,47 @@
+version: "3.8"
+
+services:
+  agentos:
+    build:
+      context: .
+      target: production
+    image: ${REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/agentos-memory:${VERSION:-latest}
+    container_name: agentos-memory-prod
+    environment:
+      - QWEN_API_KEY=***      - N8N_BASE_URL=${N8N_BASE_URL}
+      - N8N_API_KEY=***      - LOG_LEVEL=INFO
+      - LOG_FORMAT=json
+    volumes:
+      - /opt/agentos/data:/app/data
+      - /opt/agentos/config.yaml:/app/config.yaml:ro
+    ports:
+      - "8000:8000"
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: "2G"
+        reservations:
+          cpus: "0.5"
+          memory: "512M"
+
+  # Optional: Prometheus for metrics
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   ports:
+  #     - "9090:9090"
+  #   volumes:
+  #     - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml
+  #     - prometheus_data:/prometheus

@@ -1,0 +1,59 @@
+qwen:
+  api_key: "${QWEN_API_KEY}"
+  base_url: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+  model: "qwen-max"
+  embedding_model: "text-embedding-v3"
+  timeout: 60
+  max_retries: 3
+
+memory:
+  db_path: "data/agentos.db"
+  chroma_path: "data/chroma_db"
+  embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
+  max_context_tokens: 8000
+  consolidation_interval_hours: 24
+  max_episodic_per_project: 10000
+
+skills:
+  enabled:
+    - "git_ops"
+    - "filesystem"
+    - "web_search"
+    - "n8n_trigger"
+    - "scheduler"
+    - "code_intel"
+  git_ops:
+    default_branch: "main"
+    auto_commit: false
+  filesystem:
+    allowed_roots:
+      - "~/proyects"
+      - "~/Documents"
+  web_search:
+    default_limit: 5
+    timeout: 15
+  n8n_trigger:
+    base_url: "${N8N_BASE_URL}"
+    api_key: "${N8N_API_KEY}"
+    timeout: 30
+  scheduler:
+    default_timezone: "America/Lima"
+  code_intel:
+    test_command: "pytest -v"
+    lint_command: "ruff check ."
+
+agent:
+  max_iterations: 5
+  temperature: 0.3
+  system_prompt_template: |
+    Eres AgentOS, un asistente personal con memoria persistente.
+    Usuario: Paul (desarrollador en Perú, usa Arch Linux, Hyprland, Neovim, Docker, AWS, n8n, Astro, JS/Python).
+    Proyectos activos: ERP-AI (tesis), Gustos de Sabores, Sistema Ventas Online.
+    Recuerda preferencias, decisiones y contexto entre sesiones.
+    Usa herramientas solo cuando sea necesario. Sé conciso y accionable.
+  memory_injection_template: |
+    Contexto relevante de memoria:
+    {memory_context}
+  skill_injection_template: |
+    Herramientas disponibles:
+    {skills_list}
