@@ -17,6 +17,7 @@ from rich.table import Table
 
 from agentos.agent.core import AgentOS, get_agent
 from agentos.core.config import get_config, reset_config
+from agentos.mcp.server import run_mcp_server
 from agentos.memory.repository import MemoryRepository
 from agentos.memory.models import EventType
 from agentos.skills.base import get_skill_registry
@@ -81,27 +82,30 @@ def interactive(
         border_style="cyan",
     ))
 
-    while True:
-        try:
-            user_input = Prompt.ask("[bold green]You[/bold green]")
-            if user_input.lower() in ("exit", "quit", "/exit", "/quit"):
-                console.print("[dim]Goodbye![/dim]")
-                break
-            if user_input.lower() in ("/help", "help"):
-                _show_help()
-                continue
-            if user_input.startswith("/"):
-                _handle_command(user_input, agent, project, session_id)
-                continue
+    asyncio.run(_async_interactive(agent, project, session_id))
 
-            response = await agent.chat(user_input, project, session_id)
-            console.print(Markdown(f"**Agent:** {response}"))
 
-        except KeyboardInterrupt:
-            console.print("\n[dim]Interrupted[/dim]")
-            break
-        except EOFError:
-            break
+@app.command("mcp")
+def mcp_server():
+    """Start the AgentOS stdio MCP server."""
+    run_mcp_server()
+
+
+@app.command("mcp-config")
+def mcp_config(host: str = typer.Argument("opencode", help="MCP host to print config for")):
+    """Print an MCP host configuration snippet."""
+    if host != "opencode":
+        raise typer.BadParameter("Only 'opencode' is supported in the MVP")
+    snippet = {
+        "mcp": {
+            "agentos_memory": {
+                "type": "local",
+                "command": ["uv", "run", "agentos", "mcp"],
+                "enabled": True,
+            }
+        }
+    }
+    typer.echo(json.dumps(snippet, indent=2))
 
 
 async def _async_interactive(agent, project, session_id):
