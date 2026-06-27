@@ -1,5 +1,9 @@
-# Dockerfile for AgentOS
-# Multi-stage build for smaller production image
+# Dockerfile for agentos-memory.
+#
+# The primary runtime for coding hosts is local MCP over stdio:
+#   uv run agentos mcp
+# This image exists for development parity and container smoke checks; it does
+# not expose an HTTP API or provide a /health endpoint.
 
 # Build stage
 FROM python:3.11-slim AS builder
@@ -54,12 +58,5 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/app/.venv/bin:$PATH"
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
-
-# Expose ports
-EXPOSE 8000
-
-# Default command
-CMD ["agentos", "interactive"]
+# Default command: stdio MCP server.
+CMD ["agentos", "mcp"]

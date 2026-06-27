@@ -1,5 +1,10 @@
 version: "3.8"
 
+# Container deployment helper only.
+#
+# The hackathon MVP is delivered to coding agents through local MCP stdio.
+# There is intentionally no HTTP port or /health endpoint in this service.
+
 services:
   agentos:
     build:
@@ -8,21 +13,16 @@ services:
     image: ${REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/agentos-memory:${VERSION:-latest}
     container_name: agentos-memory-prod
     environment:
-      - QWEN_API_KEY=***      - N8N_BASE_URL=${N8N_BASE_URL}
-      - N8N_API_KEY=***      - LOG_LEVEL=INFO
+      - QWEN_API_KEY=${QWEN_API_KEY}
+      - LOG_LEVEL=INFO
       - LOG_FORMAT=json
     volumes:
       - /opt/agentos/data:/app/data
       - /opt/agentos/config.yaml:/app/config.yaml:ro
-    ports:
-      - "8000:8000"
+    command: ["agentos", "mcp"]
+    stdin_open: true
+    tty: true
     restart: always
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
     logging:
       driver: "json-file"
       options:

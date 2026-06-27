@@ -1,5 +1,11 @@
 version: "3.8"
 
+# Development helper only.
+#
+# Coding hosts such as OpenCode and Claude Code should launch the local stdio
+# MCP server directly with `uv run agentos mcp`; compose is not the normal
+# runtime path because MCP stdio is process-bound rather than HTTP-bound.
+
 services:
   agentos:
     build:
@@ -9,23 +15,16 @@ services:
     container_name: agentos-memory
     environment:
       - QWEN_API_KEY=${QWEN_API_KEY}
-      - N8N_BASE_URL=${N8N_BASE_URL:-http://host.docker.internal:5678}
-      - N8N_API_KEY=${N8N_API_KEY}
       - LOG_LEVEL=INFO
     volumes:
       - ./data:/app/data
       - ./config.yaml:/app/config.yaml:ro
       - ~/.ssh:/home/appuser/.ssh:ro
       - ~/proyects:/home/appuser/proyects:ro
-    ports:
-      - "8000:8000"
+    command: ["agentos", "mcp"]
+    stdin_open: true
+    tty: true
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
 
   # Optional: Redis for caching (if needed later)
   # redis:
