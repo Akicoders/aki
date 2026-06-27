@@ -1,4 +1,4 @@
-"""Skills framework for AgentOS."""
+"""Skills framework for Aki."""
 
 from __future__ import annotations
 

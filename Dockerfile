@@ -1,4 +1,4 @@
-# Dockerfile for agentos-memory.
+# Dockerfile for Aki.
 #
 # The primary runtime for coding hosts is local MCP over stdio:
 #   uv run agentos mcp

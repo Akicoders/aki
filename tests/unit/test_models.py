@@ -1,4 +1,4 @@
-"""Unit tests for AgentOS memory models."""
+"""Unit tests for Aki memory models."""
 
 import pytest
 from datetime import datetime

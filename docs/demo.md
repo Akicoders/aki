@@ -1,6 +1,6 @@
-# Demo script
+# Aki demo script
 
-This walkthrough proves the MVP claim: project memory changes coding-agent behavior across interactions.
+This walkthrough proves the MVP claim: Aki is an AI agent whose project memory changes coding-agent behavior across interactions.
 
 ## 0. Prepare the repository
 
@@ -30,7 +30,7 @@ Copy the JSON into OpenCode MCP configuration:
 ```json
 {
   "mcp": {
-    "agentos_memory": {
+    "aki_memory": {
       "type": "local",
       "command": ["uv", "run", "agentos", "mcp"],
       "enabled": true
@@ -46,7 +46,7 @@ Restart OpenCode from the repository root. The host should start `uv run agentos
 Ask the coding agent to call `memory_save`:
 
 ```text
-Save this decision in agentos memory for project qwen-hackathon-memory-agent:
+Save this decision in Aki memory for project aki:
 we use pnpm in this project.
 ```
 
@@ -57,7 +57,7 @@ Expected MCP call shape:
   "kind": "decision",
   "title": "Package manager",
   "content": "We use pnpm in this project.",
-  "project": "qwen-hackathon-memory-agent",
+  "project": "aki",
   "confidence": 1.0
 }
 ```
@@ -69,7 +69,7 @@ Expected result: `ok: true` with a stored memory item.
 With Qwen credentials configured, ask the agent to call `memory_extract`:
 
 ```text
-Extract durable memories for qwen-hackathon-memory-agent from this paragraph:
+Extract durable memories for aki from this paragraph:
 
 The architecture uses a local stdio MCP server so coding hosts can attach without a REST API.
 Memory is persisted in SQLite for facts and events, with ChromaDB used for vector-backed event retrieval.
@@ -92,7 +92,7 @@ Expected MCP call:
 
 ```json
 {
-  "project": "qwen-hackathon-memory-agent",
+  "project": "aki",
   "query": "install dependencies package manager",
   "limit": 10
 }

@@ -1,4 +1,4 @@
-"""AgentOS - Personal AI agent with persistent memory."""
+"""Aki - AI agent with portable project memory."""
 
 __version__ = "0.1.0"
 __author__ = "Paul"

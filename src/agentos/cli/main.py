@@ -1,4 +1,4 @@
-"""CLI entry point for AgentOS."""
+"""CLI entry point for Aki."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from agentos.skills.base import get_skill_registry
 
 app = typer.Typer(
     name="agentos",
-    help="AgentOS - Personal AI agent with persistent memory",
+    help="Aki - AI agent with portable project memory",
     add_completion=False,
 )
 console = Console()
@@ -35,7 +35,7 @@ def callback(
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Config file path"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
 ):
-    """AgentOS - Personal AI agent with persistent cross-session memory."""
+    """Aki is an AI agent with persistent cross-session project memory."""
     if config_path:
         reset_config()
         get_config(config_path)
@@ -51,7 +51,7 @@ def chat(
     session: Optional[str] = typer.Option(None, "--session", "-s", help="Session ID"),
     stream: bool = typer.Option(False, "--stream", help="Stream response"),
 ):
-    """Chat with AgentOS."""
+    """Chat with Aki."""
     agent = get_agent()
 
     async def run():
@@ -76,7 +76,7 @@ def interactive(
     session_id = session or f"sess_{__import__('uuid').uuid4().hex[:8]}"
 
     console.print(Panel.fit(
-        f"[bold cyan]AgentOS Interactive[/bold cyan]\n"
+        f"[bold cyan]Aki Interactive[/bold cyan]\n"
         f"Project: [yellow]{project}[/yellow] | Session: [dim]{session_id}[/dim]\n"
         f"Type 'exit' or 'quit' to leave, '/help' for commands",
         border_style="cyan",
@@ -87,7 +87,7 @@ def interactive(
 
 @app.command("mcp")
 def mcp_server():
-    """Start the AgentOS stdio MCP server."""
+    """Start the Aki stdio MCP server."""
     run_mcp_server()
 
 
@@ -98,7 +98,7 @@ def mcp_config(host: str = typer.Argument("opencode", help="MCP host to print co
         raise typer.BadParameter("Only 'opencode' is supported in the MVP")
     snippet = {
         "mcp": {
-            "agentos_memory": {
+            "aki_memory": {
                 "type": "local",
                 "command": ["uv", "run", "agentos", "mcp"],
                 "enabled": True,

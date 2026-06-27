@@ -1,6 +1,6 @@
-# Host integration guide
+# Aki host integration guide
 
-`agentos-memory` is delivered to coding agents as a local stdio MCP server. The supported MVP command is:
+Aki is an AI agent delivered to coding agents as a local stdio MCP server. The supported MVP command is:
 
 ```bash
 uv run agentos mcp
@@ -21,7 +21,7 @@ Expected JSON:
 ```json
 {
   "mcp": {
-    "agentos_memory": {
+    "aki_memory": {
       "type": "local",
       "command": ["uv", "run", "agentos", "mcp"],
       "enabled": true
@@ -30,7 +30,7 @@ Expected JSON:
 }
 ```
 
-Add the `agentos_memory` entry to your OpenCode MCP configuration. Then restart OpenCode so it spawns the local stdio server.
+Add the `aki_memory` entry to your OpenCode MCP configuration. Then restart OpenCode so it spawns the local stdio server.
 
 Recommended agent behavior:
 
@@ -42,7 +42,7 @@ Recommended agent behavior:
 
 ## Claude Code
 
-Claude Code can use the same stdio process shape. Register a local MCP server named `agentos_memory` with:
+Claude Code can use the same stdio process shape. Register a local MCP server named `aki_memory` with:
 
 ```text
 command: uv
@@ -58,11 +58,11 @@ For hosts that use a JSON shape with command and args:
 
 ```json
 {
-  "name": "agentos_memory",
+  "name": "aki_memory",
   "transport": "stdio",
   "command": "uv",
   "args": ["run", "agentos", "mcp"],
-  "cwd": "/absolute/path/to/qwen-hackathon-memory-agent"
+  "cwd": "/absolute/path/to/aki"
 }
 ```
 
@@ -92,8 +92,8 @@ Docker is not the normal runtime path for coding hosts. MCP stdio must be attach
 Use Docker only for development parity or container smoke checks:
 
 ```bash
-docker build -t agentos-memory .
-docker compose run --rm agentos agentos --help
+docker build -t aki-memory .
+docker compose run --rm aki agentos --help
 ```
 
 There are intentionally no compose ports and no `/health` checks. A broken HTTP health check would imply an API surface that the MVP does not provide.

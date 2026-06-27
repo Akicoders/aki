@@ -20,7 +20,7 @@ def test_mcp_config_opencode_prints_json_snippet():
 
     assert snippet == {
         "mcp": {
-            "agentos_memory": {
+            "aki_memory": {
                 "type": "local",
                 "command": ["uv", "run", "agentos", "mcp"],
                 "enabled": True,

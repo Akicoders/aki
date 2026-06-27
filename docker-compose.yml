@@ -2,17 +2,17 @@ version: "3.8"
 
 # Development helper only.
 #
-# Coding hosts such as OpenCode and Claude Code should launch the local stdio
+# Coding hosts such as OpenCode and Claude Code should launch Aki's local stdio
 # MCP server directly with `uv run agentos mcp`; compose is not the normal
 # runtime path because MCP stdio is process-bound rather than HTTP-bound.
 
 services:
-  agentos:
+  aki:
     build:
       context: .
       target: production
-    image: agentos-memory:latest
-    container_name: agentos-memory
+    image: aki-memory:latest
+    container_name: aki-memory
     environment:
       - QWEN_API_KEY=${QWEN_API_KEY}
       - LOG_LEVEL=INFO

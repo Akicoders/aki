@@ -1,4 +1,4 @@
-"""Agent core loop - the brain of AgentOS."""
+"""Agent core loop - the brain of Aki."""
 
 from __future__ import annotations
 
@@ -104,7 +104,7 @@ class AgentOS:
     ) -> list[dict[str, Any]]:
         """Build message history for LLM."""
         system_prompt = self.config.system_prompt_template or (
-            "Eres AgentOS, un asistente personal con memoria persistente. "
+            "You are Aki, an AI agent with persistent project memory. "
             "Usuario: Paul (desarrollador en Perú, usa Arch Linux, Hyprland, Neovim, Docker, AWS, n8n, Astro, JS/Python). "
             "Proyectos activos: ERP-AI (tesis), Gustos de Sabores, Sistema Ventas Online. "
             "Recuerda preferencias, decisiones y contexto entre sesiones. "

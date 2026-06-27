@@ -1,4 +1,4 @@
-"""Database layer for AgentOS memory."""
+"""Database layer for Aki memory."""
 
 from contextlib import contextmanager
 from pathlib import Path

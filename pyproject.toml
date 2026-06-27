@@ -1,7 +1,7 @@
 [project]
-name = "agentos-memory"
+name = "aki-memory"
 version = "0.1.0"
-description = "MemoryAgent for Qwen Cloud Hackathon - Personal AI agent with persistent cross-session memory"
+description = "Aki is an AI agent for portable project memory, powered by Qwen and delivered through MCP"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
@@ -42,6 +42,12 @@ dependencies = [
 
 [project.scripts]
 agentos = "agentos.cli.main:app"
+aki = "agentos.cli.main:app"
+
+[project.urls]
+Homepage = "https://github.com/Akicoders/aki"
+Repository = "https://github.com/Akicoders/aki"
+Issues = "https://github.com/Akicoders/aki/issues"
 
 [project.optional-dependencies]
 dev = [

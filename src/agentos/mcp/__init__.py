@@ -1,4 +1,4 @@
-"""MCP server package for AgentOS memory tools."""
+"""MCP server package for Aki memory tools."""
 
 from .server import create_mcp_server, run_mcp_server
 

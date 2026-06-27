@@ -1,4 +1,4 @@
-"""Memory models for AgentOS."""
+"""Memory models for Aki."""
 
 from datetime import datetime
 from enum import Enum

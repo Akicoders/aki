@@ -2,16 +2,16 @@ version: "3.8"
 
 # Container deployment helper only.
 #
-# The hackathon MVP is delivered to coding agents through local MCP stdio.
+# Aki's hackathon MVP is delivered to coding agents through local MCP stdio.
 # There is intentionally no HTTP port or /health endpoint in this service.
 
 services:
-  agentos:
+  aki:
     build:
       context: .
       target: production
-    image: ${REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/agentos-memory:${VERSION:-latest}
-    container_name: agentos-memory-prod
+    image: ${REGISTRY:-ghcr.io/Akicoders}/aki-memory:${VERSION:-latest}
+    container_name: aki-memory-prod
     environment:
       - QWEN_API_KEY=${QWEN_API_KEY}
       - LOG_LEVEL=INFO

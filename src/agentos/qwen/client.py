@@ -1,4 +1,4 @@
-"""Qwen Cloud API client for AgentOS."""
+"""Qwen Cloud API client for Aki."""
 
 from __future__ import annotations
 

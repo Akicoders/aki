@@ -46,7 +46,7 @@ agent:
   max_iterations: 5
   temperature: 0.3
   system_prompt_template: |
-    Eres AgentOS, un asistente personal con memoria persistente.
+    You are Aki, an AI agent with persistent project memory.
     Usuario: Paul (desarrollador en Perú, usa Arch Linux, Hyprland, Neovim, Docker, AWS, n8n, Astro, JS/Python).
     Proyectos activos: ERP-AI (tesis), Gustos de Sabores, Sistema Ventas Online.
     Recuerda preferencias, decisiones y contexto entre sesiones.

@@ -27,7 +27,7 @@ class WebSearchSkill(Skill):
             limit = limit or self.default_limit
             url = "https://html.duckduckgo.com/html/"
             params = {"q": query}
-            headers = {"User-Agent": "Mozilla/5.0 (compatible; AgentOS/1.0)"}
+            headers = {"User-Agent": "Mozilla/5.0 (compatible; Aki/1.0)"}
 
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 resp = await client.post(url, data=params, headers=headers)

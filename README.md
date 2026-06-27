@@ -1,36 +1,40 @@
-# agentos-memory
+# Aki
 
 Portable project memory for AI coding agents — powered by Qwen, delivered through MCP.
 
-`agentos-memory` gives coding agents a durable memory layer for project decisions, conventions, procedures, and architecture notes. It runs locally as a stdio MCP server, so hosts such as OpenCode can retrieve context before editing code and save new knowledge after useful work.
+![Python](https://img.shields.io/badge/python-3.11%2B-blue)
+![Tests](https://img.shields.io/badge/tests-49%20passing-brightgreen)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-## Vision
+Aki is an AI agent that gives coding assistants durable project memory. It runs locally as a stdio MCP server so hosts such as OpenCode, Claude Code, and other MCP-compatible agents can retrieve project context before editing code and save new decisions after useful work.
 
-AI coding sessions should not start from zero every time. This project turns project knowledge into a portable memory capsule that can follow the repository across agent hosts without requiring a hosted REST API, chatbot bridge, or multi-user backend.
+## What is Aki?
 
-For the hackathon MVP, the core loop is intentionally focused:
+Aki is a hackathon MVP for portable memory across AI coding sessions. Instead of forcing every agent session to rediscover repository conventions, architecture choices, and setup procedures, Aki stores those memories locally and exposes them through MCP tools.
 
-1. A coding agent connects to `agentos-memory` through MCP stdio.
-2. The agent asks for project context before acting.
-3. The agent saves durable decisions and procedures after work.
-4. Qwen Cloud can extract structured memories from prose.
-5. Deterministic fallbacks keep local save/search/context flows useful when Qwen credentials are absent.
+Use Aki when you want an AI coding agent to:
+
+- remember project decisions across sessions;
+- search prior implementation notes before changing code;
+- keep procedural setup knowledge close to the repository;
+- extract structured memories from architecture prose with Qwen;
+- keep working locally when Qwen credentials are unavailable.
 
 ## Features
 
-- **MCP stdio server** for local coding-agent integration.
-- **Five memory tools**: `memory_context`, `memory_search`, `memory_save`, `memory_extract`, and `memory_explain`.
-- **Project-aware memory** using explicit project names or current-directory detection.
-- **Persistent storage** with SQLite for facts/events and ChromaDB for vector-backed event search.
-- **Qwen-powered extraction** for turning paragraphs into facts, decisions, and procedures.
-- **Graceful local operation** for manual save/search/context when Qwen credentials are not configured.
-- **Host-ready docs** for OpenCode, Claude Code, and Antigravity-style MCP hosts.
+- **Local stdio MCP server**: primary runtime is `uv run agentos mcp`.
+- **Five MCP memory tools**: `memory_context`, `memory_search`, `memory_save`, `memory_extract`, and `memory_explain`.
+- **Qwen extraction**: turns prose into structured memory candidates when Qwen Cloud credentials are configured.
+- **Deterministic fallback**: manual save/search/context and keyword explanations remain available without Qwen credentials.
+- **Episodic, semantic, and procedural memory**: stores recent events, durable facts/decisions, and repeatable procedures.
+- **Project-aware context**: uses explicit project names or current-directory detection.
+- **Host integration docs**: includes setup notes for OpenCode, Claude Code, and Antigravity-style MCP hosts.
 
 ## Architecture
 
 ```text
 ┌────────────────────┐       stdio MCP        ┌────────────────────┐
-│ AI coding host      │ ─────────────────────▶ │ agentos mcp         │
+│ AI coding host      │ ─────────────────────▶ │ Aki MCP server      │
 │ OpenCode / Claude   │ ◀───────────────────── │ FastMCP tools       │
 └────────────────────┘                         └─────────┬──────────┘
                                                           │
@@ -48,37 +52,43 @@ For the hackathon MVP, the core loop is intentionally focused:
               └──────────────────┘
 ```
 
-Primary runtime path:
+The Python package and CLI entry point are currently named `agentos` for MVP compatibility. The user-facing agent name is **Aki**.
 
-```bash
-uv run agentos mcp
-```
-
-Docker and compose files are development helpers only. They do not expose an HTTP service and do not define `/health` checks because the MVP interface is stdio MCP, not REST.
-
-## Setup
+## Installation
 
 ### Requirements
 
 - Python 3.11+
 - [`uv`](https://docs.astral.sh/uv/)
-- Optional: Qwen Cloud/DashScope-compatible API key for extraction and explanation enrichment
+- Optional: Qwen Cloud/DashScope-compatible API key for extraction and enriched explanations
 
-### Install
+### From source with uv
 
 ```bash
-git clone <your-repo-url>
-cd qwen-hackathon-memory-agent
+git clone https://github.com/Akicoders/aki.git
+cd aki
 uv sync --all-extras
 ```
 
-### Configure environment
+### Local editable install
+
+```bash
+uv pip install -e .
+```
+
+### pip install
+
+The package is not published to PyPI yet. Until a release is published, install from source.
+
+## Configuration
+
+Create a local environment file:
 
 ```bash
 cp .env.example .env
 ```
 
-For local save/search/context smoke checks, Qwen credentials are optional. For Qwen extraction, set:
+Qwen configuration:
 
 ```bash
 QWEN_API_KEY=your_qwen_api_key_here
@@ -87,7 +97,7 @@ QWEN_MODEL=qwen-max
 QWEN_EMBEDDING_MODEL=text-embedding-v3
 ```
 
-Memory defaults:
+Memory storage defaults:
 
 ```bash
 MEMORY_DB_PATH=data/agentos.db
@@ -95,16 +105,37 @@ MEMORY_CHROMA_PATH=data/chroma_db
 MEMORY_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
 ```
 
-### Validate the CLI
+`config.yaml` contains the same defaults for local development. Do not commit real API keys.
+
+## Usage
+
+Primary MCP runtime:
 
 ```bash
-uv run agentos --help
+uv run agentos mcp
+```
+
+Generate an OpenCode MCP snippet:
+
+```bash
 uv run agentos mcp-config opencode
 ```
 
-## OpenCode configuration
+Other available CLI commands:
 
-Generate the snippet:
+```bash
+uv run agentos --help
+uv run agentos chat "remember that we use pnpm" --project my-project
+uv run agentos recall "package manager" --project my-project
+uv run agentos remember "The MVP runtime is MCP stdio, not HTTP" --project my-project
+uv run agentos facts --project my-project
+```
+
+The `agentos` command is retained for compatibility. A matching `aki` console script is also available after installing the package.
+
+## MCP Integration
+
+### OpenCode
 
 ```bash
 uv run agentos mcp-config opencode
@@ -115,7 +146,7 @@ Expected output:
 ```json
 {
   "mcp": {
-    "agentos_memory": {
+    "aki_memory": {
       "type": "local",
       "command": ["uv", "run", "agentos", "mcp"],
       "enabled": true
@@ -124,121 +155,52 @@ Expected output:
 }
 ```
 
-Add the `agentos_memory` entry to your OpenCode MCP configuration from the repository root. See [`docs/integration.md`](docs/integration.md) for host-specific notes.
+Add `aki_memory` to your OpenCode MCP configuration and restart OpenCode from the repository root.
 
-## Claude Code notes
+### Claude Code
 
-Claude Code MCP configuration is host-managed. Use the same local process shape:
+Register a local stdio MCP server with the same process shape:
 
-```bash
-uv run agentos mcp
+```text
+command: uv
+args: run agentos mcp
+transport: stdio
 ```
 
-Register it as a local stdio MCP server named `agentos_memory`. Start Claude Code from the project root when you want project auto-detection to resolve to this repository.
-
-## Antigravity notes
-
-Antigravity-style agent hosts that support local MCP stdio should use the same command array:
+### Antigravity-style MCP hosts
 
 ```json
 {
-  "name": "agentos_memory",
+  "name": "aki_memory",
   "transport": "stdio",
   "command": "uv",
-  "args": ["run", "agentos", "mcp"]
+  "args": ["run", "agentos", "mcp"],
+  "cwd": "/absolute/path/to/aki"
 }
 ```
 
-If your host requires an absolute working directory, point it at this repository. Do not configure an HTTP URL; there is no REST server in the MVP.
-
-## Tool reference
-
-### `memory_context`
-
-Returns a compact memory capsule for a project.
-
-Inputs:
-
-- `project` optional project name. If omitted, the server attempts current-directory detection.
-- `query` optional focus query.
-- `limit` optional max number of facts/events, clamped to a safe range.
-
-Use before coding to let the agent adapt to stored conventions.
-
-### `memory_search`
-
-Searches stored facts and events.
-
-Inputs:
-
-- `query` required search text.
-- `project` optional project name.
-- `limit` optional result count.
-
-Use when the agent needs a specific past decision or procedure.
-
-### `memory_save`
-
-Stores a durable memory.
-
-Inputs:
-
-- `kind`: `fact`, `decision`, or `procedure`.
-- `title`: concise searchable title.
-- `content`: durable memory body.
-- `project` optional project name.
-- `confidence` optional score from `0` to `1`.
-
-Use after decisions, bug fixes, setup discoveries, and repeatable procedures.
-
-### `memory_extract`
-
-Uses Qwen to extract structured memories from prose and stores them.
-
-Inputs:
-
-- `text` required source paragraph.
-- `project` optional project name.
-- `source` optional provenance label.
-
-Requires Qwen credentials. Without them, the tool returns a clear Qwen extraction error; manual `memory_save` remains available.
-
-### `memory_explain`
-
-Searches memory and explains why returned memories are relevant.
-
-Inputs:
-
-- `query` required search text.
-- `project` optional project name.
-
-Qwen can enrich explanations when configured. If Qwen is unavailable, deterministic keyword-based explanations are returned with the Qwen error included in `errors`.
+See [`docs/integration.md`](docs/integration.md) for host-specific notes.
 
 ## Demo walkthrough
 
-The full evaluator script is in [`docs/demo.md`](docs/demo.md). It shows:
+The evaluator walkthrough is in [`docs/demo.md`](docs/demo.md). It shows how to:
 
-1. OpenCode launching `agentos mcp` as a local MCP server.
-2. Saving the decision “we use pnpm in this project.”
-3. Extracting structured memories from an architecture paragraph.
-4. Calling `memory_context` so the coding agent changes behavior based on memory.
-5. Demonstrating the no-Qwen fallback path.
+1. start `agentos mcp` as an OpenCode local MCP server;
+2. save a project decision such as “we use pnpm”;
+3. extract structured memories from an architecture paragraph;
+4. query `memory_context` and show it changing agent behavior;
+5. demonstrate fallback behavior when Qwen credentials are absent.
 
 ## Docker and compose
 
-Build the image for development parity:
+Docker is a development helper, not the normal runtime path for coding hosts. MCP stdio must remain attached to the host process.
 
 ```bash
-docker build -t agentos-memory .
+docker build -t aki-memory .
+docker compose run --rm aki agentos --help
 ```
 
-Run the compose helper only when you intentionally want a containerized stdio process for manual development:
-
-```bash
-docker compose run --rm agentos agentos --help
-```
-
-Do not use compose as the normal runtime for OpenCode or Claude Code. Coding hosts should launch the local command directly so stdio remains attached to the host process.
+There are intentionally no compose ports and no `/health` checks. Aki's MVP interface is stdio MCP, not HTTP.
 
 ## Development
 
@@ -249,49 +211,33 @@ uv run pytest tests/ -q
 uv run agentos mcp-config opencode
 ```
 
-Direct handler smoke test:
+## Project Status
 
-```bash
-uv run python - <<'PY'
-from pathlib import Path
-from tempfile import TemporaryDirectory
+Aki is an MVP built for the Qwen hackathon. It is useful for local agent memory workflows, but it is not a hosted production service.
 
-from agentos.mcp.tools import MemoryToolHandlers
-from agentos.memory.repository import MemoryRepository
+Out of scope for this MVP:
 
-class FakeEmbedder:
-    def embed(self, text: str) -> list[float]:
-        return [1.0, 0.0, 0.0]
-
-with TemporaryDirectory() as tmp:
-    repo = MemoryRepository(
-        db_path=Path(tmp) / "agentos.db",
-        chroma_path=Path(tmp) / "chroma_db",
-        embedder=FakeEmbedder(),
-    )
-    handlers = MemoryToolHandlers(repository=repo, qwen_client=None)
-    print(handlers.memory_context(project="demo", query="package manager"))
-    print(handlers.memory_save("decision", "Package manager", "We use pnpm.", project="demo"))
-    print(handlers.memory_search("pnpm", project="demo"))
-PY
-```
-
-## Out of scope for the MVP
-
-- WhatsApp integration
-- Telegram integration
-- Voice ingestion
 - REST API or web dashboard
-- Multi-user/team tenancy
-- Hosted production service
-- Long-running HTTP health checks
+- multi-user/team tenancy
+- WhatsApp, Telegram, or voice ingestion
+- hosted production deployment
+- HTTP health checks
 
-These are deliberately excluded so the submission stays focused on the coding-agent memory loop.
+## Roadmap
 
-## Troubleshooting
+- Publish the package and container image under final repository coordinates.
+- Add more host-specific MCP examples after real-world testing.
+- Improve structured extraction prompts and memory ranking.
+- Add release automation once the public repository is created.
 
-See [`docs/troubleshooting.md`](docs/troubleshooting.md) for common setup and smoke-check issues.
+## Contributing
+
+Contributions are welcome. Please read [`CONTRIBUTING.md`](CONTRIBUTING.md), run the test suite, and avoid committing credentials or local memory data.
 
 ## License
 
-MIT
+MIT. See [`LICENSE`](LICENSE).
+
+## Credits
+
+Built for the Qwen hackathon using Qwen Cloud-compatible APIs, MCP, SQLite, and ChromaDB.

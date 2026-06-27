@@ -1,4 +1,4 @@
-"""Configuration management for AgentOS."""
+"""Configuration management for Aki."""
 
 from pathlib import Path
 from typing import Any, Optional

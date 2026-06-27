@@ -1,4 +1,4 @@
-# Troubleshooting
+# Aki troubleshooting
 
 ## OpenCode cannot start the MCP server
 
@@ -13,7 +13,7 @@ If your host cannot resolve `uv`, use an absolute path to `uv` in the host confi
 
 ## Do not configure an HTTP URL
 
-The MVP does not expose REST or `/health`. Use local stdio MCP:
+Aki's MVP does not expose REST or `/health`. Use local stdio MCP:
 
 ```bash
 uv run agentos mcp
