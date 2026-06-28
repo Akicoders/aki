@@ -5,7 +5,7 @@ description = "Aki is an AI agent for portable project memory, powered by Qwen a
 readme = "README.md"
 license = "MIT"
 authors = [
-    {name = "Paul", email = "paul@example.com"}
+    {name = "Akicoders"}
 ]
 requires-python = ">=3.11"
 dependencies = [

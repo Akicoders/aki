@@ -23,7 +23,7 @@ from agentos.memory.models import EventType
 from agentos.skills.base import get_skill_registry
 
 app = typer.Typer(
-    name="agentos",
+    name="aki",
     help="Aki - AI agent with portable project memory",
     add_completion=False,
 )
@@ -94,18 +94,36 @@ def mcp_server():
 @app.command("mcp-config")
 def mcp_config(host: str = typer.Argument("opencode", help="MCP host to print config for")):
     """Print an MCP host configuration snippet."""
-    if host != "opencode":
-        raise typer.BadParameter("Only 'opencode' is supported in the MVP")
-    snippet = {
-        "mcp": {
-            "aki_memory": {
-                "type": "local",
-                "command": ["uv", "run", "agentos", "mcp"],
-                "enabled": True,
+    normalized_host = host.strip().lower()
+    command = ["uv", "run", "aki", "mcp"]
+    snippets = {
+        "opencode": {
+            "mcp": {
+                "aki_memory": {
+                    "type": "local",
+                    "command": command,
+                    "enabled": True,
+                }
             }
-        }
+        },
+        "claude-code": {
+            "name": "aki_memory",
+            "transport": "stdio",
+            "command": command[0],
+            "args": command[1:],
+        },
+        "generic-json": {
+            "name": "aki_memory",
+            "transport": "stdio",
+            "command": command[0],
+            "args": command[1:],
+            "cwd": "/absolute/path/to/aki",
+        },
     }
-    typer.echo(json.dumps(snippet, indent=2))
+    if normalized_host not in snippets:
+        supported = ", ".join(sorted(snippets))
+        raise typer.BadParameter(f"Unsupported host '{host}'. Supported hosts: {supported}")
+    typer.echo(json.dumps(snippets[normalized_host], indent=2))
 
 
 async def _async_interactive(agent, project, session_id):

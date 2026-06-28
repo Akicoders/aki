@@ -104,11 +104,9 @@ class AgentOS:
     ) -> list[dict[str, Any]]:
         """Build message history for LLM."""
         system_prompt = self.config.system_prompt_template or (
-            "You are Aki, an AI agent with persistent project memory. "
-            "Usuario: Paul (desarrollador en Perú, usa Arch Linux, Hyprland, Neovim, Docker, AWS, n8n, Astro, JS/Python). "
-            "Proyectos activos: ERP-AI (tesis), Gustos de Sabores, Sistema Ventas Online. "
-            "Recuerda preferencias, decisiones y contexto entre sesiones. "
-            "Usa herramientas solo cuando sea necesario. Sé conciso y accionable."
+            "You are Aki, an AI agent with persistent project memory for coding workflows. "
+            "Help developers preserve durable facts, decisions, and procedures across sessions. "
+            "Be concise, practical, and careful with context budgets."
         )
 
         messages = [
@@ -116,7 +114,7 @@ class AgentOS:
         ]
 
         # Inject memory context
-        memory_text = context.format_for_prompt()
+        memory_text = context.format_for_prompt(max_tokens=get_config().memory.max_context_tokens)
         if memory_text:
             messages.append({
                 "role": "system",

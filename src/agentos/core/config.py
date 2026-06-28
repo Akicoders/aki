@@ -13,6 +13,8 @@ class QwenConfig(BaseSettings):
     api_key: str = Field(default="", description="Qwen Cloud API key")
     base_url: str = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
     model: str = "qwen-max"
+    extraction_model: str = ""
+    consolidation_model: str = ""
     embedding_model: str = "text-embedding-v3"
     timeout: int = 60
     max_retries: int = 3
