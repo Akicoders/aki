@@ -72,13 +72,14 @@ class QwenClient:
         temperature: float = 0.3,
         max_tokens: Optional[int] = None,
         stream: bool = False,
+        model: str | None = None,
     ) -> ChatResponse | AsyncGenerator[str, None]:
         """Chat completion with optional function calling."""
         if stream:
             return self._chat_stream(messages, tools, tool_choice, temperature, max_tokens)
 
         response = await self.client.chat.completions.create(
-            model=self.config.model,
+            model=model or self.config.model,
             messages=messages,
             tools=tools,
             tool_choice=tool_choice,
@@ -114,6 +115,7 @@ class QwenClient:
         prompt: str,
         system_prompt: str | None = None,
         max_tokens: Optional[int] = None,
+        model: str | None = None,
     ) -> dict[str, Any]:
         """Request a JSON object from Qwen and parse it strictly."""
         json_system_prompt = system_prompt or (
@@ -131,6 +133,7 @@ class QwenClient:
                 tool_choice="none",
                 temperature=0.0,
                 max_tokens=max_tokens,
+                model=model,
             )
         except Exception as exc:  # external API failures are recoverable by callers
             raise QwenStructuredJSONError(f"Qwen request failed: {exc}") from exc

@@ -209,27 +209,47 @@ class MemoryContext(BaseModel):
     total_tokens: int = 0
 
     def format_for_prompt(self, max_tokens: int = 8000) -> str:
-        parts = []
+        sections: list[str] = []
+        used_tokens = 0
 
-        if self.facts:
-            facts_str = "\n".join(
-                f"- [{f.scope}] {f.key} = {f.value} (confidence: {f.confidence:.2f})"
-                for f in self.facts[:20]
-            )
-            parts.append(f"Hechos conocidos:\n{facts_str}")
+        section_builders = [
+            ("Hechos conocidos", [
+                f"- [{fact.scope}] {fact.key} = {fact.value} (confidence: {fact.confidence:.2f})"
+                for fact in self.facts[:20]
+            ]),
+            ("Eventos recientes", [
+                f"- [{event.timestamp:%Y-%m-%d %H:%M}] ({event.type.value}) {event.project}: {event.content[:200]}"
+                for event in self.events[:15]
+            ]),
+            ("Herramientas disponibles", [
+                f"- {skill.name}: {skill.description} — funciones: {', '.join(skill.functions)}"
+                for skill in self.skills
+                if skill.enabled
+            ]),
+        ]
 
-        if self.events:
-            events_str = "\n".join(
-                f"- [{e.timestamp:%Y-%m-%d %H:%M}] ({e.type.value}) {e.project}: {e.content[:200]}"
-                for e in self.events[:15]
-            )
-            parts.append(f"Eventos recientes:\n{events_str}")
+        for title, lines in section_builders:
+            if not lines:
+                continue
+            accepted_lines: list[str] = []
+            section_overhead = _estimate_tokens(title) + 4
+            for line in lines:
+                line_tokens = _estimate_tokens(line)
+                projected = used_tokens + section_overhead + sum(_estimate_tokens(item) for item in accepted_lines) + line_tokens
+                if projected > max_tokens:
+                    break
+                accepted_lines.append(line)
+            if not accepted_lines:
+                continue
+            body = "\n".join(accepted_lines)
+            section = f"{title}:\n{body}"
+            sections.append(section)
+            used_tokens += _estimate_tokens(section)
+            if used_tokens >= max_tokens:
+                break
 
-        if self.skills:
-            skills_str = "\n".join(
-                f"- {s.name}: {s.description} — funciones: {', '.join(s.functions)}"
-                for s in self.skills if s.enabled
-            )
-            parts.append(f"Herramientas disponibles:\n{skills_str}")
+        return "\n\n".join(sections)
 
-        return "\n\n".join(parts)
+
+def _estimate_tokens(text: str) -> int:
+    return max(1, len(text) // 4)

@@ -7,6 +7,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+from agentos.core.config import get_config
 from agentos.mcp.project import detect_project
 from agentos.memory.capsule import build_memory_capsule
 from agentos.memory.models import EventType, MemoryEvent, MemoryFact
@@ -41,13 +42,15 @@ class MemoryToolHandlers:
     ) -> dict[str, Any]:
         resolved_project = detect_project(project)
         safe_limit = _safe_limit(limit)
+        max_tokens = get_config().memory.max_context_tokens
         context = self.repository.assemble_context(
             query or "",
             project=resolved_project,
-            max_tokens=safe_limit,
+            max_tokens=max_tokens,
         )
         context.facts = context.facts[:safe_limit]
         context.events = context.events[:safe_limit]
+        context.total_tokens = self.repository.estimate_context_tokens(context)
         capsule = build_memory_capsule(project=resolved_project, context=context)
         return _ok(resolved_project, capsule=capsule.model_dump(mode="json"))
 
@@ -131,7 +134,11 @@ class MemoryToolHandlers:
             self._store_candidate(candidate, resolved_project, source or "mcp_extract")
             for candidate in extraction.candidates
         ]
-        context = self.repository.assemble_context("", project=resolved_project, max_tokens=10)
+        context = self.repository.assemble_context(
+            "",
+            project=resolved_project,
+            max_tokens=get_config().memory.max_context_tokens,
+        )
         capsule = build_memory_capsule(project=resolved_project, context=context)
         return _ok(resolved_project, items=items, capsule=capsule.model_dump(mode="json"))
 
@@ -142,7 +149,11 @@ class MemoryToolHandlers:
 
         items = self.memory_search(query=query, project=resolved_project, limit=10)["items"]
         if not items:
-            context = self.repository.assemble_context("", project=resolved_project, max_tokens=10)
+            context = self.repository.assemble_context(
+                "",
+                project=resolved_project,
+                max_tokens=get_config().memory.max_context_tokens,
+            )
             items = [_fact_item(fact) for fact in context.facts] + [
                 _event_item(event) for event in context.events
             ]

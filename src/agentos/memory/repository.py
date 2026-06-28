@@ -269,15 +269,12 @@ class MemoryRepository:
         max_tokens: int = 8000,
     ) -> MemoryContext:
         """Build context for LLM: relevant facts + recent events + skills."""
-        # Get relevant facts
         facts = self.search_facts(query, scope=f"project:{project}" if project else None, limit=15)
         if not facts and project:
             facts = self.get_facts_by_scope(f"project:{project}", limit=15)
 
-        # Get relevant events
         events = self.search_events(query, project=project, limit=10)
 
-        # Add recent events from same session
         if session_id:
             with self.db.session() as session:
                 stmt = select(MemoryEventModel).where(
@@ -288,21 +285,50 @@ class MemoryRepository:
                 ).order_by(MemoryEventModel.timestamp.desc()).limit(10)
                 models = session.execute(stmt).scalars().all()
                 session_events = [MemoryEvent.from_model(m) for m in models]
-                # Merge, avoiding duplicates
-                seen = {e.id for e in events}
-                for e in session_events:
-                    if e.id not in seen:
-                        events.append(e)
+                seen = {event.id for event in events}
+                for event in session_events:
+                    if event.id not in seen:
+                        events.append(event)
+                        seen.add(event.id)
 
-        # Get skills
         skills = self.list_skills(enabled_only=True)
-
-        return MemoryContext(
-            events=events[:15],
+        context = MemoryContext(
             facts=facts[:20],
+            events=events[:15],
             skills=skills,
-            total_tokens=0,  # TODO: estimate
+            total_tokens=0,
         )
+        context = self._fit_context_to_budget(context, max_tokens=max_tokens)
+        context.total_tokens = self.estimate_context_tokens(context)
+        return context
+
+    def estimate_context_tokens(self, context: MemoryContext) -> int:
+        return _estimate_tokens(context.format_for_prompt(max_tokens=1_000_000))
+
+    def _fit_context_to_budget(self, context: MemoryContext, max_tokens: int) -> MemoryContext:
+        fitted = MemoryContext(skills=context.skills)
+        for fact in context.facts:
+            candidate = MemoryContext(
+                facts=[*fitted.facts, fact],
+                events=fitted.events,
+                skills=fitted.skills,
+            )
+            if self.estimate_context_tokens(candidate) > max_tokens:
+                break
+            fitted.facts.append(fact)
+
+        for event in context.events:
+            candidate = MemoryContext(
+                facts=fitted.facts,
+                events=[*fitted.events, event],
+                skills=fitted.skills,
+            )
+            if self.estimate_context_tokens(candidate) > max_tokens:
+                break
+            fitted.events.append(event)
+
+        fitted.total_tokens = self.estimate_context_tokens(fitted)
+        return fitted
 
     # --- Consolidation ---
 
@@ -339,6 +365,10 @@ class MemoryRepository:
                     fact_count += 1
 
             return fact_count
+
+
+def _estimate_tokens(text: str) -> int:
+    return max(1, len(text) // 4)
 
 
 # Convenience functions

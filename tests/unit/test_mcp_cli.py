@@ -22,8 +22,35 @@ def test_mcp_config_opencode_prints_json_snippet():
         "mcp": {
             "aki_memory": {
                 "type": "local",
-                "command": ["uv", "run", "agentos", "mcp"],
+                "command": ["uv", "run", "aki", "mcp"],
                 "enabled": True,
             }
         }
+    }
+
+
+def test_mcp_config_claude_code_prints_stdio_shape():
+    result = CliRunner().invoke(app, ["mcp-config", "claude-code"])
+
+    assert result.exit_code == 0
+    snippet = json.loads(result.stdout)
+    assert snippet == {
+        "name": "aki_memory",
+        "transport": "stdio",
+        "command": "uv",
+        "args": ["run", "aki", "mcp"],
+    }
+
+
+def test_mcp_config_generic_json_prints_stdio_shape_with_cwd_placeholder():
+    result = CliRunner().invoke(app, ["mcp-config", "generic-json"])
+
+    assert result.exit_code == 0
+    snippet = json.loads(result.stdout)
+    assert snippet == {
+        "name": "aki_memory",
+        "transport": "stdio",
+        "command": "uv",
+        "args": ["run", "aki", "mcp"],
+        "cwd": "/absolute/path/to/aki",
     }
