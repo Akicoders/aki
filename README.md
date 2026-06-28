@@ -22,7 +22,7 @@ Use Aki when you want an AI coding agent to:
 
 ## Features
 
-- **Local stdio MCP server**: primary runtime is `uv run agentos mcp`.
+- **Local stdio MCP server**: primary runtime is `uv run aki mcp`.
 - **Five MCP memory tools**: `memory_context`, `memory_search`, `memory_save`, `memory_extract`, and `memory_explain`.
 - **Qwen extraction**: turns prose into structured memory candidates when Qwen Cloud credentials are configured.
 - **Deterministic fallback**: manual save/search/context and keyword explanations remain available without Qwen credentials.
@@ -52,7 +52,7 @@ Use Aki when you want an AI coding agent to:
               └──────────────────┘
 ```
 
-The Python package and CLI entry point are currently named `agentos` for MVP compatibility. The user-facing agent name is **Aki**.
+The public CLI entry point is `aki`. The legacy `agentos` command remains available as a compatibility alias during the MVP transition.
 
 ## Installation
 
@@ -93,7 +93,9 @@ Qwen configuration:
 ```bash
 QWEN_API_KEY=your_qwen_api_key_here
 QWEN_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
-QWEN_MODEL=qwen-max
+QWEN_MODEL=qwen3.7-max
+QWEN_EXTRACTION_MODEL=qwen3.7-plus
+QWEN_CONSOLIDATION_MODEL=qwen3.7-max
 QWEN_EMBEDDING_MODEL=text-embedding-v3
 ```
 
@@ -103,6 +105,7 @@ Memory storage defaults:
 MEMORY_DB_PATH=data/agentos.db
 MEMORY_CHROMA_PATH=data/chroma_db
 MEMORY_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+MEMORY_MAX_CONTEXT_TOKENS=8000
 ```
 
 `config.yaml` contains the same defaults for local development. Do not commit real API keys.
@@ -112,33 +115,35 @@ MEMORY_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
 Primary MCP runtime:
 
 ```bash
-uv run agentos mcp
+uv run aki mcp
 ```
 
-Generate an OpenCode MCP snippet:
+Generate MCP snippets for supported hosts:
 
 ```bash
-uv run agentos mcp-config opencode
+uv run aki mcp-config opencode
+uv run aki mcp-config claude-code
+uv run aki mcp-config generic-json
 ```
 
 Other available CLI commands:
 
 ```bash
-uv run agentos --help
-uv run agentos chat "remember that we use pnpm" --project my-project
-uv run agentos recall "package manager" --project my-project
-uv run agentos remember "The MVP runtime is MCP stdio, not HTTP" --project my-project
-uv run agentos facts --project my-project
+uv run aki --help
+uv run aki chat "remember that we use pnpm" --project my-project
+uv run aki recall "package manager" --project my-project
+uv run aki remember "The MVP runtime is MCP stdio, not HTTP" --project my-project
+uv run aki facts --project my-project
 ```
 
-The `agentos` command is retained for compatibility. A matching `aki` console script is also available after installing the package.
+The `agentos` command is retained for compatibility. A matching `aki` console script is available after installing the package.
 
 ## MCP Integration
 
 ### OpenCode
 
 ```bash
-uv run agentos mcp-config opencode
+uv run aki mcp-config opencode
 ```
 
 Expected output:
@@ -148,7 +153,7 @@ Expected output:
   "mcp": {
     "aki_memory": {
       "type": "local",
-      "command": ["uv", "run", "agentos", "mcp"],
+      "command": ["uv", "run", "aki", "mcp"],
       "enabled": true
     }
   }
@@ -159,24 +164,25 @@ Add `aki_memory` to your OpenCode MCP configuration and restart OpenCode from th
 
 ### Claude Code
 
-Register a local stdio MCP server with the same process shape:
-
-```text
-command: uv
-args: run agentos mcp
-transport: stdio
+```bash
+uv run aki mcp-config claude-code
 ```
 
-### Antigravity-style MCP hosts
+Expected output:
 
 ```json
 {
   "name": "aki_memory",
   "transport": "stdio",
   "command": "uv",
-  "args": ["run", "agentos", "mcp"],
-  "cwd": "/absolute/path/to/aki"
+  "args": ["run", "aki", "mcp"]
 }
+```
+
+### Generic stdio JSON hosts
+
+```bash
+uv run aki mcp-config generic-json
 ```
 
 See [`docs/integration.md`](docs/integration.md) for host-specific notes.
@@ -185,7 +191,7 @@ See [`docs/integration.md`](docs/integration.md) for host-specific notes.
 
 The evaluator walkthrough is in [`docs/demo.md`](docs/demo.md). It shows how to:
 
-1. start `agentos mcp` as an OpenCode local MCP server;
+1. start `aki mcp` as an OpenCode local MCP server;
 2. save a project decision such as “we use pnpm”;
 3. extract structured memories from an architecture paragraph;
 4. query `memory_context` and show it changing agent behavior;
@@ -197,7 +203,7 @@ Docker is a development helper, not the normal runtime path for coding hosts. MC
 
 ```bash
 docker build -t aki-memory .
-docker compose run --rm aki agentos --help
+docker compose run --rm aki aki --help
 ```
 
 There are intentionally no compose ports and no `/health` checks. Aki's MVP interface is stdio MCP, not HTTP.
@@ -208,7 +214,7 @@ There are intentionally no compose ports and no `/health` checks. Aki's MVP inte
 uv sync --all-extras
 uv run ruff check .
 uv run pytest tests/ -q
-uv run agentos mcp-config opencode
+uv run aki mcp-config opencode
 ```
 
 ## Project Status

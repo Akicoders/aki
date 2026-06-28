@@ -14,15 +14,17 @@ Optional for Qwen extraction:
 ```bash
 export QWEN_API_KEY=your_qwen_api_key_here
 export QWEN_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
-export QWEN_MODEL=qwen-max
+export QWEN_MODEL=qwen3.7-max
+export QWEN_EXTRACTION_MODEL=qwen3.7-plus
+export QWEN_CONSOLIDATION_MODEL=qwen3.7-max
 ```
 
-## 1. Start `agentos mcp` as an OpenCode local MCP server
+## 1. Start `aki mcp` as an OpenCode local MCP server
 
 Generate the OpenCode snippet:
 
 ```bash
-uv run agentos mcp-config opencode
+uv run aki mcp-config opencode
 ```
 
 Copy the JSON into OpenCode MCP configuration:
@@ -32,14 +34,14 @@ Copy the JSON into OpenCode MCP configuration:
   "mcp": {
     "aki_memory": {
       "type": "local",
-      "command": ["uv", "run", "agentos", "mcp"],
+      "command": ["uv", "run", "aki", "mcp"],
       "enabled": true
     }
   }
 }
 ```
 
-Restart OpenCode from the repository root. The host should start `uv run agentos mcp` over stdio.
+Restart OpenCode from the repository root. The host should start `uv run aki mcp` over stdio.
 
 ## 2. Save a project decision
 

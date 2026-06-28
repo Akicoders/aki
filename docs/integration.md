@@ -3,7 +3,7 @@
 Aki is an AI agent delivered to coding agents as a local stdio MCP server. The supported MVP command is:
 
 ```bash
-uv run agentos mcp
+uv run aki mcp
 ```
 
 Run host commands from the repository root unless your host lets you set an explicit working directory.
@@ -13,7 +13,7 @@ Run host commands from the repository root unless your host lets you set an expl
 Generate the configuration snippet:
 
 ```bash
-uv run agentos mcp-config opencode
+uv run aki mcp-config opencode
 ```
 
 Expected JSON:
@@ -23,7 +23,7 @@ Expected JSON:
   "mcp": {
     "aki_memory": {
       "type": "local",
-      "command": ["uv", "run", "agentos", "mcp"],
+      "command": ["uv", "run", "aki", "mcp"],
       "enabled": true
     }
   }
@@ -46,7 +46,7 @@ Claude Code can use the same stdio process shape. Register a local MCP server na
 
 ```text
 command: uv
-args: run agentos mcp
+args: run aki mcp
 transport: stdio
 ```
 
@@ -61,7 +61,7 @@ For hosts that use a JSON shape with command and args:
   "name": "aki_memory",
   "transport": "stdio",
   "command": "uv",
-  "args": ["run", "agentos", "mcp"],
+  "args": ["run", "aki", "mcp"],
   "cwd": "/absolute/path/to/aki"
 }
 ```
@@ -75,7 +75,9 @@ Set these variables in the environment visible to the MCP process:
 ```bash
 QWEN_API_KEY=your_qwen_api_key_here
 QWEN_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
-QWEN_MODEL=qwen-max
+QWEN_MODEL=qwen3.7-max
+QWEN_EXTRACTION_MODEL=qwen3.7-plus
+QWEN_CONSOLIDATION_MODEL=qwen3.7-max
 QWEN_EMBEDDING_MODEL=text-embedding-v3
 ```
 
@@ -87,13 +89,13 @@ Qwen is required for `memory_extract` and enriches `memory_explain`. Without Qwe
 
 ## Docker and compose alignment
 
-Docker is not the normal runtime path for coding hosts. MCP stdio must be attached to the host process, so OpenCode and Claude Code should launch `uv run agentos mcp` locally.
+Docker is not the normal runtime path for coding hosts. MCP stdio must be attached to the host process, so OpenCode and Claude Code should launch `uv run aki mcp` locally.
 
 Use Docker only for development parity or container smoke checks:
 
 ```bash
 docker build -t aki-memory .
-docker compose run --rm aki agentos --help
+docker compose run --rm aki aki --help
 ```
 
 There are intentionally no compose ports and no `/health` checks. A broken HTTP health check would imply an API surface that the MVP does not provide.

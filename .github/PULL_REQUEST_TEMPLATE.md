@@ -1,14 +1,21 @@
 ## Summary
+- problem:
+- approach:
+- outcome:
 
--
+## SDD alignment
+- proposal:
+- spec:
+- design:
+- tasks:
+
+## Trade-offs
+- 
 
 ## Verification
-
 - [ ] `uv run ruff check .`
 - [ ] `uv run pytest tests/ -q`
-- [ ] `uv run agentos mcp-config opencode`
-- [ ] `uv run agentos --help`
+- [ ] Relevant manual or MCP smoke test documented
 
-## Notes
-
-Mention any follow-up work, risks, or docs updates.
+## Evidence
+- links, screenshots, or command outputs:

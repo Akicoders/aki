@@ -5,8 +5,8 @@
 Verify the command works from the repository root:
 
 ```bash
-uv run agentos mcp-config opencode
-uv run agentos --help
+uv run aki mcp-config opencode
+uv run aki --help
 ```
 
 If your host cannot resolve `uv`, use an absolute path to `uv` in the host configuration.
@@ -16,7 +16,7 @@ If your host cannot resolve `uv`, use an absolute path to `uv` in the host confi
 Aki's MVP does not expose REST or `/health`. Use local stdio MCP:
 
 ```bash
-uv run agentos mcp
+uv run aki mcp
 ```
 
 Docker and compose are development helpers, not the runtime path for coding hosts.
@@ -29,6 +29,8 @@ Check that these variables are visible to the MCP process:
 QWEN_API_KEY
 QWEN_BASE_URL
 QWEN_MODEL
+QWEN_EXTRACTION_MODEL
+QWEN_CONSOLIDATION_MODEL
 ```
 
 If credentials are absent, this is non-blocking for the core demo. Use `memory_save`, `memory_search`, and `memory_context` manually. `memory_extract` specifically requires Qwen.
@@ -44,7 +46,7 @@ Run:
 ```bash
 uv run ruff check .
 uv run pytest tests/ -q
-uv run agentos mcp-config opencode
+uv run aki mcp-config opencode
 ```
 
 Direct handler smoke test:
