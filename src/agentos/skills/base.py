@@ -38,6 +38,7 @@ class Skill(ABC):
     config: dict[str, Any] = Field(default_factory=dict)
 
     def __init__(self, config: Optional[dict] = None):
+        self.config = {}
         if config:
             self.config.update(config)
         # Auto-discover functions
@@ -115,7 +116,6 @@ class Skill(ABC):
             },
         }
 
-    @abstractmethod
     async def execute(self, function: str, arguments: dict[str, Any]) -> SkillResult:
         """Execute a function by name with arguments."""
         fn = getattr(self, function, None)
