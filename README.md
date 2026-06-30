@@ -54,6 +54,25 @@ Use Aki when you want an AI coding agent to:
 
 The public CLI entry point is `aki`. The legacy `agentos` command remains available as a compatibility alias during the MVP transition.
 
+## Development Methodology
+
+Aki was built using **Spec-Driven Development (SDD)**, a structured approach that ensures architectural clarity and incremental delivery:
+
+1. **Explore** — Analyzed memory agent landscape, MCP ecosystem, and differentiation opportunities
+2. **Propose** — Defined scope, capabilities, risks, and success criteria
+3. **Specify** — Wrote testable requirements with Given/When/Then scenarios
+4. **Design** — Made architectural decisions with documented tradeoffs
+5. **Implement** — Executed in 4 phases with continuous verification
+
+All SDD artifacts are available in [`docs/sdd/`](docs/sdd/):
+- [Exploration](docs/sdd/explore.md) and [Ecosystem Analysis](docs/sdd/explore-ecosystem.md)
+- [Proposal](docs/sdd/proposal.md) with scope and risks
+- [Specification](docs/sdd/spec.md) with testable scenarios
+- [Design](docs/sdd/design.md) with architecture decisions
+- [Tasks](docs/sdd/tasks.md) and [Progress](docs/sdd/apply-progress.md)
+
+**Result**: 51 tests passing in <5 seconds, delivered in 4 days.
+
 ## Installation
 
 ### Requirements
