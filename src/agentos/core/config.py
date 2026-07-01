@@ -3,9 +3,43 @@
 import os
 from pathlib import Path
 from typing import Any, Optional
+
+from dotenv import load_dotenv
 import yaml
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _iter_env_search_roots(start: Optional[Path] = None) -> list[Path]:
+    roots: list[Path] = []
+    seen: set[Path] = set()
+
+    def add_root(root: Path) -> None:
+        resolved = root.resolve(strict=False)
+        if resolved not in seen:
+            seen.add(resolved)
+            roots.append(resolved)
+
+    if start is not None:
+        anchor = start if start.is_dir() else start.parent
+        for candidate in (anchor, *anchor.parents):
+            add_root(candidate)
+
+    cwd = Path.cwd()
+    for candidate in (cwd, *cwd.parents):
+        add_root(candidate)
+
+    return roots
+
+
+def load_runtime_env(start: Optional[Path] = None) -> Optional[Path]:
+    """Load the nearest .env into os.environ for runtime consumers."""
+    for root in _iter_env_search_roots(start):
+        env_path = root / ".env"
+        if env_path.is_file():
+            load_dotenv(env_path, override=False)
+            return env_path
+    return None
 
 
 class QwenConfig(BaseSettings):
@@ -127,9 +161,9 @@ class Config(BaseSettings):
     @classmethod
     def from_yaml(cls, path: Path) -> "Config":
         """Load config from YAML file with environment variable interpolation."""
-        import os
         import re
 
+        load_runtime_env(path)
         content = path.read_text(encoding="utf-8")
 
         # Replace ${VAR} or ${VAR:-default} with environment values
@@ -153,6 +187,7 @@ def get_config(config_path: Optional[Path] = None) -> Config:
     """Get global config instance, loading from YAML if path provided."""
     global _config
     if _config is None:
+        load_runtime_env(config_path)
         if config_path and config_path.exists():
             _config = Config.from_yaml(config_path)
         else:

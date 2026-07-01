@@ -28,6 +28,13 @@ from agentos.cli.cockpit import (
     resolve_project_ref,
 )
 from agentos.cli.mcp_hosts import _get_host_config_path, _get_mcp_snippet, _merge_mcp_config
+from agentos.cli.update import (
+    UpdateError,
+    locate_installed_source_dir,
+    resolve_uv_binary,
+    run_update_command,
+    validate_source_checkout,
+)
 from agentos.cockpit.navigation import run_cockpit_loop
 from agentos.cockpit import registry
 from agentos.cockpit.registry import list_projects
@@ -54,6 +61,10 @@ projects_app = typer.Typer(help="Browse projects when current context is unclear
 app.add_typer(cockpit_app, name="cockpit")
 app.add_typer(projects_app, name="projects")
 console = Console()
+
+
+def _format_status(message: str) -> str:
+    return f"[bold cyan]{message}...[/bold cyan]"
 
 
 def _get_agent():
@@ -87,15 +98,35 @@ def chat(
     stream: bool = typer.Option(False, "--stream", help="Stream response"),
 ):
     """Chat with Aki."""
-    agent = _get_agent()
+    with console.status(_format_status("Loading memory engine")):
+        agent = _get_agent()
 
     async def run():
+        response = ""
+
+        with console.status(_format_status("Collecting project context")) as status:
+            def update_status(message: str) -> None:
+                status.update(_format_status(message))
+
+            if stream:
+                async for chunk in agent.stream_chat(
+                    message,
+                    project,
+                    session,
+                    status_callback=update_status,
+                ):
+                    console.print(chunk, end="")
+            else:
+                response = await agent.chat(
+                    message,
+                    project,
+                    session,
+                    status_callback=update_status,
+                )
+
         if stream:
-            async for chunk in agent.stream_chat(message, project, session):
-                console.print(chunk, end="")
             console.print()
         else:
-            response = await agent.chat(message, project, session)
             console.print(Markdown(response))
 
     asyncio.run(run())
@@ -107,7 +138,8 @@ def interactive(
     session: Optional[str] = typer.Option(None, "--session", "-s", help="Session ID"),
 ):
     """Start interactive chat session."""
-    agent = _get_agent()
+    with console.status(_format_status("Loading memory engine")):
+        agent = _get_agent()
     session_id = session or f"sess_{__import__('uuid').uuid4().hex[:8]}"
 
     _print_interactive_header(agent, project, session_id)
@@ -311,6 +343,54 @@ def doctor():
         console.print("\n[green]All checks passed.[/green]")
     else:
         console.print("\n[yellow]Some checks failed. See above for details.[/yellow]")
+
+
+@app.command()
+def update():
+    """Update the Aki installation from its source checkout."""
+    source_dir = locate_installed_source_dir()
+    if source_dir is None:
+        console.print(
+            "[red]Aki does not appear to be installed from a source checkout.[/red]\n"
+            "[yellow]`aki update` only works for Linux/macOS installs backed by a cloned "
+            "repository. Re-clone the repo and install from source if you need this command.[/yellow]"
+        )
+        raise typer.Exit(1)
+
+    try:
+        source_dir = validate_source_checkout(source_dir)
+        uv_bin = resolve_uv_binary()
+
+        console.print(f"[cyan]Updating Aki from {source_dir}[/cyan]")
+
+        console.print("[cyan]Pulling latest changes with git pull...[/cyan]")
+        run_update_command(
+            ["git", "pull"],
+            cwd=source_dir,
+            missing_message="git is required to update Aki but was not found in PATH.",
+            failure_message="git pull failed",
+        )
+
+        console.print("[cyan]Syncing dependencies with uv sync --all-extras...[/cyan]")
+        run_update_command(
+            [uv_bin, "sync", "--all-extras"],
+            cwd=source_dir,
+            missing_message="uv is required to update Aki but was not found.",
+            failure_message="uv sync --all-extras failed",
+        )
+
+        console.print("[cyan]Refreshing the global aki tool shim...[/cyan]")
+        run_update_command(
+            [uv_bin, "tool", "install", "--editable", ".", "--force"],
+            cwd=source_dir,
+            missing_message="uv is required to refresh the Aki tool install but was not found.",
+            failure_message="uv tool install --editable . --force failed",
+        )
+    except UpdateError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from exc
+
+    console.print("[green]✓[/green] Aki updated successfully.")
 
 
 @cockpit_app.callback(invoke_without_command=True)
@@ -518,7 +598,8 @@ def _print_interactive_header(agent: "AgentOS", project: str, session_id: str):
     ))
 
     try:
-        context = asyncio.run(agent.recall("", project))
+        with console.status(_format_status("Collecting project context")):
+            context = asyncio.run(agent.recall("", project))
         if context.facts:
             facts_text = "\n".join(
                 f"  [cyan]{f.key}[/cyan] = {f.value[:60]}"

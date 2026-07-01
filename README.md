@@ -3,7 +3,7 @@
 Portable project memory for AI coding agents — powered by Qwen, delivered through MCP.
 
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Tests](https://img.shields.io/badge/tests-77%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-136%20passing-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 Aki is an AI agent that gives coding assistants durable project memory. It runs locally as a stdio MCP server so hosts such as OpenCode, Claude Code, and other MCP-compatible agents can retrieve project context before editing code and save new decisions after useful work.
@@ -32,6 +32,9 @@ Use Aki when you want an AI coding agent to:
 - **SDD-aware chat**: detects Spec-Driven Development artifacts and injects them into chat context when relevant.
 - **SDD initialization**: `aki sdd-init` bootstraps `docs/sdd/` with proposal, spec, design, and tasks templates.
 - **Sectioned interactive UI**: `aki interactive` shows memory context, skills, and SDD status at startup.
+- **Operational cockpit**: default view shows project health, action items, memory posture, and SDD status when `aki` runs with no subcommand inside a recognized project.
+- **Project registry**: `aki projects browse` lists known projects with persistent SQLite-backed storage, search/filter, and one-click cockpit access.
+- **Read-only project audit**: `aki audit <project>` runs specialized passes (tests, SDD completeness, git hygiene, env/config, MCP readiness, memory posture) and produces structured markdown reports in `docs/audits/`.
 
 ## Architecture
 
@@ -74,7 +77,7 @@ All SDD artifacts are available in [`docs/sdd/`](docs/sdd/):
 - [Design](docs/sdd/design.md) with architecture decisions
 - [Tasks](docs/sdd/tasks.md) and [Progress](docs/sdd/apply-progress.md)
 
-**Result**: 77 tests passing in <25 seconds, delivered in 4 days.
+**Result**: 136 tests passing in <25 seconds, with operational cockpit, audit engine, and project registry delivered across phases 2–4.
 
 ## Installation
 
@@ -96,13 +99,19 @@ It does not modify OpenCode, Claude Code, or any other MCP host configuration fi
 
 ### Updating Aki
 
-To update an existing installation:
+For source-based installs, `aki update` is the recommended update path:
+
+```bash
+aki update
+```
+
+This pulls the latest changes from the cloned repository, runs `uv sync --all-extras`, refreshes the global editable `aki` tool install, and confirms the update.
+
+The legacy installer path still exists if you need it:
 
 ```bash
 sh install.sh --update
 ```
-
-This pulls the latest changes (if in a git repository), runs `uv sync --all-extras`, and confirms the update.
 
 ### From source with uv
 
@@ -158,7 +167,75 @@ MEMORY_MAX_CONTEXT_TOKENS=8000
 
 ## Usage
 
-Primary MCP runtime:
+### Operational Cockpit
+
+When run with no subcommand inside a recognized project, Aki displays an operational cockpit overview:
+
+```bash
+uv run aki
+```
+
+The cockpit shows:
+- **Project Health** — test status, git state, environment configuration
+- **Action Items** — pending tasks and checks requiring attention
+- **Memory Posture** — recent decisions and procedural memories
+- **SDD Status** — current Spec-Driven Development artifacts and progress
+
+This is the default entry point for understanding project state at a glance.
+
+### Project Registry and Browse
+
+List known projects and navigate to their cockpits:
+
+```bash
+uv run aki projects browse
+```
+
+The registry:
+- Maintains a persistent SQLite-backed project database
+- Supports search and filter by name or path
+- Allows one-click selection to open the cockpit for any registered project
+- Auto-detects projects when running `aki` inside a git repository
+
+### Cockpit Navigation
+
+For interactive drill-down navigation within the cockpit:
+
+```bash
+uv run aki cockpit --interactive
+# or
+uv run aki cockpit -i
+```
+
+Keyboard shortcuts:
+- `Tab` / Arrow keys — move between panels
+- `j` / `k` — move within a panel list
+- `Enter` — open detail view
+- `b` — go back to previous view
+- `g` — return to overview
+- `r` — refresh data
+- `/` — filter or search
+- `q` — quit
+
+### Audit
+
+Run a read-only audit on a project to assess posture across multiple dimensions:
+
+```bash
+uv run aki audit <project>
+```
+
+The audit runs specialized passes:
+- **Tests posture** — test coverage and passing status
+- **SDD completeness** — presence and quality of specification artifacts
+- **Git hygiene** — branch state, commit history, and upstream sync
+- **Environment & config** — secrets, credentials, and configuration validation
+- **MCP readiness** — integration status with MCP hosts
+- **Memory posture** — project memory retention and structure
+
+Results are saved as structured markdown reports in `docs/audits/` for later retrieval. The audit is read-only; no automatic fixes are applied.
+
+### Primary MCP runtime
 
 ```bash
 uv run aki mcp
