@@ -5,7 +5,7 @@ import pytest
 
 from agentos.core.config import reset_config
 from agentos.memory.database import get_database, reset_database
-from agentos.memory.repository import MemoryRepository
+from agentos.memory.repository import MemoryRepository, reset_embedder_cache
 
 
 class FakeEmbedder:
@@ -28,9 +28,11 @@ def reset_globals():
     """Reset global state before each test."""
     reset_database()
     reset_config()
+    reset_embedder_cache()
     yield
     reset_database()
     reset_config()
+    reset_embedder_cache()
 
 
 @pytest.fixture

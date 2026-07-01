@@ -1,6 +1,12 @@
 """Memory repository - data access layer."""
 
+import io
+import logging
+import os
+import warnings
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime, timedelta
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional, Protocol
 
@@ -21,6 +27,9 @@ from .models import (
 )
 
 
+_MODEL_LOGGERS = ("huggingface_hub", "sentence_transformers", "transformers")
+
+
 class Embedder(Protocol):
     """Text embedding provider used by the memory repository."""
 
@@ -32,12 +41,41 @@ class SentenceTransformerEmbedder:
     """SentenceTransformer adapter that satisfies the Embedder protocol."""
 
     def __init__(self, model_name: str):
-        from sentence_transformers import SentenceTransformer
-
-        self.model = SentenceTransformer(model_name)
+        self.model = _get_sentence_transformer(model_name)
 
     def embed(self, text: str) -> list[float]:
         return self.model.encode(text, normalize_embeddings=True).tolist()
+
+
+def _create_sentence_transformer(model_name: str):
+    os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+    os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
+    captured_output = io.StringIO()
+    logger_levels = {name: logging.getLogger(name).level for name in _MODEL_LOGGERS}
+
+    try:
+        for logger_name in _MODEL_LOGGERS:
+            logging.getLogger(logger_name).setLevel(logging.ERROR)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with redirect_stdout(captured_output), redirect_stderr(captured_output):
+                from sentence_transformers import SentenceTransformer
+
+                return SentenceTransformer(model_name)
+    finally:
+        for logger_name, level in logger_levels.items():
+            logging.getLogger(logger_name).setLevel(level)
+
+
+@lru_cache(maxsize=None)
+def _get_sentence_transformer(model_name: str):
+    return _create_sentence_transformer(model_name)
+
+
+def reset_embedder_cache() -> None:
+    _get_sentence_transformer.cache_clear()
 
 
 class MemoryRepository:

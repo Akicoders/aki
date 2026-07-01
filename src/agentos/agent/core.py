@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime
-from typing import Any, Optional, AsyncGenerator
+from typing import Any, AsyncGenerator, Callable, Optional
 
 from agentos.core.config import get_config, AgentConfig
 from agentos.memory.repository import MemoryRepository, create_event
@@ -16,6 +16,13 @@ from agentos.skills import BUILTIN_SKILLS
 from agentos.sdd.detector import detect_sdd_artifacts, summarize_sdd_context
 
 logger = logging.getLogger(__name__)
+
+StatusCallback = Callable[[str], None]
+
+
+def _notify_status(status_callback: Optional[StatusCallback], message: str) -> None:
+    if status_callback is not None:
+        status_callback(message)
 
 
 class AgentOS:
@@ -51,6 +58,7 @@ class AgentOS:
         project: str = "default",
         session_id: Optional[str] = None,
         stream: bool = False,
+        status_callback: Optional[StatusCallback] = None,
     ) -> str:
         """Main chat entry point."""
         if not session_id:
@@ -68,6 +76,7 @@ class AgentOS:
         logger.info(f"User [{session_id}]: {user_input[:100]}")
 
         # 2. Assemble context from memory
+        _notify_status(status_callback, "Collecting project context")
         context = self.memory.assemble_context(
             query=user_input,
             project=project,
@@ -82,9 +91,11 @@ class AgentOS:
         tools: list[dict[str, Any]] = self.skills.get_all_tools()
 
         # 5. Reasoning loop
+        _notify_status(status_callback, "Reasoning with Qwen")
         response = await self._reasoning_loop(messages, tools, project, session_id)
 
         # 6. Store agent response
+        _notify_status(status_callback, "Saving conversation")
         agent_event = create_event(
             type=EventType.CONVERSATION,
             project=project,
@@ -230,9 +241,15 @@ class AgentOS:
         user_input: str,
         project: str = "default",
         session_id: Optional[str] = None,
+        status_callback: Optional[StatusCallback] = None,
     ) -> AsyncGenerator[str, None]:
         """Stream chat response (not fully implemented with tools yet)."""
-        response = await self.chat(user_input, project, session_id)
+        response = await self.chat(
+            user_input,
+            project,
+            session_id,
+            status_callback=status_callback,
+        )
         for chunk in response.split():
             yield chunk + " "
 

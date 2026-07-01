@@ -56,6 +56,10 @@ app.add_typer(projects_app, name="projects")
 console = Console()
 
 
+def _format_status(message: str) -> str:
+    return f"[bold cyan]{message}...[/bold cyan]"
+
+
 def _get_agent():
     from agentos.agent.core import get_agent
 
@@ -87,15 +91,35 @@ def chat(
     stream: bool = typer.Option(False, "--stream", help="Stream response"),
 ):
     """Chat with Aki."""
-    agent = _get_agent()
+    with console.status(_format_status("Loading memory engine")):
+        agent = _get_agent()
 
     async def run():
+        response = ""
+
+        with console.status(_format_status("Collecting project context")) as status:
+            def update_status(message: str) -> None:
+                status.update(_format_status(message))
+
+            if stream:
+                async for chunk in agent.stream_chat(
+                    message,
+                    project,
+                    session,
+                    status_callback=update_status,
+                ):
+                    console.print(chunk, end="")
+            else:
+                response = await agent.chat(
+                    message,
+                    project,
+                    session,
+                    status_callback=update_status,
+                )
+
         if stream:
-            async for chunk in agent.stream_chat(message, project, session):
-                console.print(chunk, end="")
             console.print()
         else:
-            response = await agent.chat(message, project, session)
             console.print(Markdown(response))
 
     asyncio.run(run())
@@ -107,7 +131,8 @@ def interactive(
     session: Optional[str] = typer.Option(None, "--session", "-s", help="Session ID"),
 ):
     """Start interactive chat session."""
-    agent = _get_agent()
+    with console.status(_format_status("Loading memory engine")):
+        agent = _get_agent()
     session_id = session or f"sess_{__import__('uuid').uuid4().hex[:8]}"
 
     _print_interactive_header(agent, project, session_id)
@@ -518,7 +543,8 @@ def _print_interactive_header(agent: "AgentOS", project: str, session_id: str):
     ))
 
     try:
-        context = asyncio.run(agent.recall("", project))
+        with console.status(_format_status("Collecting project context")):
+            context = asyncio.run(agent.recall("", project))
         if context.facts:
             facts_text = "\n".join(
                 f"  [cyan]{f.key}[/cyan] = {f.value[:60]}"
