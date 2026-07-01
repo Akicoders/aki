@@ -1,9 +1,10 @@
 """Configuration management for Aki."""
 
+import os
 from pathlib import Path
 from typing import Any, Optional
 import yaml
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,6 +19,12 @@ class QwenConfig(BaseSettings):
     embedding_model: str = "text-embedding-v3"
     timeout: int = 60
     max_retries: int = 3
+
+    @model_validator(mode="after")
+    def _fallback_dashscope_key(self) -> "QwenConfig":
+        if not self.api_key:
+            self.api_key = os.environ.get("DASHSCOPE_API_KEY", "")
+        return self
 
 
 class MemoryConfig(BaseSettings):

@@ -10,7 +10,15 @@ Run host commands from the repository root unless your host lets you set an expl
 
 ## OpenCode
 
-Generate the configuration snippet:
+Automatic setup (recommended):
+
+```bash
+uv run aki mcp-setup opencode
+```
+
+This creates a backup of your existing config and merges the Aki MCP configuration. Use `--dry-run` to preview changes first.
+
+Manual setup — generate the configuration snippet:
 
 ```bash
 uv run aki mcp-config opencode
@@ -42,7 +50,13 @@ Recommended agent behavior:
 
 ## Claude Code
 
-Claude Code can use the same stdio process shape. Register a local MCP server named `aki_memory` with:
+Automatic setup:
+
+```bash
+uv run aki mcp-setup claude-code
+```
+
+Manual setup — Claude Code can use the same stdio process shape. Register a local MCP server named `aki_memory` with:
 
 ```text
 command: uv

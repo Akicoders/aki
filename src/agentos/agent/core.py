@@ -13,6 +13,7 @@ from agentos.memory.models import MemoryContext, EventType, MemoryEvent
 from agentos.qwen.client import QwenClient, ChatResponse, get_qwen_client
 from agentos.skills.base import SkillRegistry, SkillResult, get_skill_registry
 from agentos.skills import BUILTIN_SKILLS
+from agentos.sdd.detector import detect_sdd_artifacts, summarize_sdd_context
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +136,15 @@ class AgentOS:
                 if self.config.skill_injection_template
                 else f"Herramientas disponibles:\n{skills_text}"
             })
+
+        sdd_keywords = ("spec", "design", "proposal", "tasks", "sdd", "specification", "architecture")
+        if any(kw in user_input.lower() for kw in sdd_keywords):
+            sdd_context = summarize_sdd_context()
+            if sdd_context:
+                messages.append({
+                    "role": "system",
+                    "content": f"SDD project context:\n{sdd_context}"
+                })
 
         # Current user input
         messages.append({"role": "user", "content": user_input})

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shutil
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -21,6 +23,9 @@ from agentos.mcp.server import run_mcp_server
 from agentos.memory.repository import MemoryRepository
 from agentos.memory.models import EventType
 from agentos.skills.base import get_skill_registry
+from agentos.skills import load_skills
+from agentos.sdd.detector import detect_sdd_artifacts, summarize_sdd_context
+from agentos.sdd.init import init_sdd_project
 
 app = typer.Typer(
     name="aki",
@@ -75,12 +80,16 @@ def interactive(
     agent = get_agent()
     session_id = session or f"sess_{__import__('uuid').uuid4().hex[:8]}"
 
-    console.print(Panel.fit(
-        f"[bold cyan]Aki Interactive[/bold cyan]\n"
-        f"Project: [yellow]{project}[/yellow] | Session: [dim]{session_id}[/dim]\n"
-        f"Type 'exit' or 'quit' to leave, '/help' for commands",
-        border_style="cyan",
-    ))
+    _print_interactive_header(agent, project, session_id)
+
+    sdd_status = detect_sdd_artifacts()
+    if not sdd_status.has_sdd:
+        console.print(Panel(
+            "[yellow]This project doesn't have SDD artifacts yet.[/yellow]\n"
+            "Run [bold]aki sdd-init[/bold] to initialize SDD for this project.",
+            title="SDD Detection",
+            border_style="yellow",
+        ))
 
     asyncio.run(_async_interactive(agent, project, session_id))
 
@@ -124,6 +133,270 @@ def mcp_config(host: str = typer.Argument("opencode", help="MCP host to print co
         supported = ", ".join(sorted(snippets))
         raise typer.BadParameter(f"Unsupported host '{host}'. Supported hosts: {supported}")
     typer.echo(json.dumps(snippets[normalized_host], indent=2))
+
+
+def _get_mcp_snippet(host: str) -> dict:
+    command = ["uv", "run", "aki", "mcp"]
+    snippets = {
+        "opencode": {
+            "mcp": {
+                "aki_memory": {
+                    "type": "local",
+                    "command": command,
+                    "enabled": True,
+                }
+            }
+        },
+        "claude-code": {
+            "mcpServers": {
+                "aki_memory": {
+                    "command": command[0],
+                    "args": command[1:],
+                }
+            }
+        },
+    }
+    return snippets.get(host, {})
+
+
+def _get_host_config_path(host: str) -> Path:
+    paths = {
+        "opencode": Path.home() / ".config" / "opencode" / "opencode.json",
+        "claude-code": Path.home() / ".claude" / "claude_desktop_config.json",
+    }
+    if host not in paths:
+        supported = ", ".join(sorted(paths))
+        raise typer.BadParameter(f"Unsupported host '{host}'. Supported hosts: {supported}")
+    return paths[host]
+
+
+def _merge_mcp_config(existing: dict, snippet: dict) -> dict:
+    result = dict(existing)
+    for key, value in snippet.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = {**result[key], **value}
+        else:
+            result[key] = value
+    return result
+
+
+@app.command("mcp-setup")
+def mcp_setup(
+    host: str = typer.Argument(..., help="MCP host to configure (opencode or claude-code)"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would happen without modifying files"),
+):
+    """Automatically set up Aki MCP config in a host's configuration file."""
+    normalized_host = host.strip().lower()
+    if normalized_host not in ("opencode", "claude-code"):
+        raise typer.BadParameter(f"Unsupported host '{host}'. Supported: opencode, claude-code")
+
+    config_path = _get_host_config_path(normalized_host)
+    snippet = _get_mcp_snippet(normalized_host)
+
+    if dry_run:
+        console.print(f"[bold]Dry run for {normalized_host}[/bold]")
+        console.print(f"Config file: {config_path}")
+        if config_path.exists():
+            console.print("[yellow]File exists — would create backup and merge[/yellow]")
+            try:
+                existing = json.loads(config_path.read_text(encoding="utf-8"))
+                merged = _merge_mcp_config(existing, snippet)
+                console.print("[bold]Merged config would be:[/bold]")
+                console.print(json.dumps(merged, indent=2))
+            except (json.JSONDecodeError, OSError) as e:
+                console.print(f"[red]Cannot parse existing file: {e}[/red]")
+        else:
+            console.print("[yellow]File does not exist — would create it[/yellow]")
+            console.print(json.dumps(snippet, indent=2))
+        return
+
+    if config_path.exists():
+        timestamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+        backup_path = config_path.with_suffix(f".backup.{timestamp}")
+        shutil.copy2(config_path, backup_path)
+        console.print(f"[green]✓[/green] Backup created: {backup_path}")
+
+        try:
+            existing = json.loads(config_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as e:
+            console.print(f"[red]Cannot parse {config_path}: {e}[/red]")
+            raise typer.Exit(1)
+
+        merged = _merge_mcp_config(existing, snippet)
+    else:
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        merged = snippet
+
+    config_path.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
+    console.print(f"[green]✓[/green] Aki MCP config added to {config_path}")
+
+
+@app.command()
+def doctor():
+    """Check Aki installation health."""
+    checks: list[tuple[str, bool, str]] = []
+
+    py_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    py_ok = sys.version_info >= (3, 11)
+    checks.append(("Python >= 3.11", py_ok, py_version))
+
+    uv_ok = shutil.which("uv") is not None
+    checks.append(("uv installed", uv_ok, shutil.which("uv") or "not found"))
+
+    env_path = Path(".env")
+    env_ok = env_path.exists()
+    env_detail = str(env_path) if env_ok else "not found"
+    if env_ok:
+        env_text = env_path.read_text(encoding="utf-8")
+        has_qwen = "QWEN_API_KEY=" in env_text and "QWEN_API_KEY=your_" not in env_text
+        has_dashscope = "DASHSCOPE_API_KEY=" in env_text and "DASHSCOPE_API_KEY=your_" not in env_text
+        has_key = has_qwen or has_dashscope
+        detail = "QWEN_API_KEY set" if has_qwen else ("DASHSCOPE_API_KEY set" if has_dashscope else "placeholder or missing")
+        checks.append(("API key set", has_key, detail))
+    else:
+        checks.append(("QWEN_API_KEY set", False, "no .env file"))
+
+    lock_ok = Path("uv.lock").exists()
+    checks.append(("uv.lock exists", lock_ok, "uv.lock" if lock_ok else "not found"))
+
+    import_ok = False
+    import_detail = ""
+    try:
+        import agentos
+        import agentos.cli.main
+        import_ok = True
+        import_detail = "ok"
+    except ImportError as e:
+        import_detail = str(e)
+    checks.append(("Import agentos", import_ok, import_detail))
+
+    if py_ok and env_ok:
+        api_ok = False
+        api_detail = "skipped"
+        try:
+            env_text = env_path.read_text(encoding="utf-8")
+            key = ""
+            for line in env_text.splitlines():
+                if line.startswith("QWEN_API_KEY="):
+                    candidate = line.split("=", 1)[1].strip()
+                    if candidate and not candidate.startswith("your_"):
+                        key = candidate
+                    break
+            if not key:
+                for line in env_text.splitlines():
+                    if line.startswith("DASHSCOPE_API_KEY="):
+                        candidate = line.split("=", 1)[1].strip()
+                        if candidate and not candidate.startswith("your_"):
+                            key = candidate
+                        break
+            if key:
+                import httpx
+                base_url = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+                for line2 in env_text.splitlines():
+                    if line2.startswith("QWEN_BASE_URL="):
+                        base_url = line2.split("=", 1)[1].strip()
+                        break
+                resp = httpx.get(
+                    f"{base_url}/models",
+                    headers={"Authorization": f"Bearer {key}"},
+                    timeout=10,
+                )
+                api_ok = resp.status_code == 200
+                api_detail = f"HTTP {resp.status_code}"
+            else:
+                api_detail = "placeholder key"
+        except Exception as e:
+            api_detail = str(e)
+        checks.append(("Qwen API reachable", api_ok, api_detail))
+
+    table = Table(title="Aki Health Check")
+    table.add_column("Check", style="white")
+    table.add_column("Status", style="bold")
+    table.add_column("Detail", style="dim")
+
+    for name, ok, detail in checks:
+        status = "[green]✅[/green]" if ok else "[red]❌[/red]"
+        table.add_row(name, status, detail)
+
+    console.print(table)
+
+    all_ok = all(ok for _, ok, _ in checks)
+    if all_ok:
+        console.print("\n[green]All checks passed.[/green]")
+    else:
+        console.print("\n[yellow]Some checks failed. See above for details.[/yellow]")
+
+
+def _print_interactive_header(agent: AgentOS, project: str, session_id: str):
+    console.print(Panel.fit(
+        f"[bold cyan]Aki Interactive[/bold cyan]\n"
+        f"Project: [yellow]{project}[/yellow] | Session: [dim]{session_id}[/dim]\n"
+        f"Type 'exit' or 'quit' to leave, '/help' for commands",
+        border_style="cyan",
+    ))
+
+    sdd_status = detect_sdd_artifacts()
+    console.print(Panel(
+        sdd_status.summary(),
+        title="SDD Status",
+        border_style="green" if sdd_status.has_sdd else "dim",
+    ))
+
+    try:
+        context = asyncio.run(agent.recall("", project))
+        if context.facts:
+            facts_text = "\n".join(
+                f"  [cyan]{f.key}[/cyan] = {f.value[:60]}"
+                for f in context.facts[:5]
+            )
+            console.print(Panel(facts_text, title="Memory Context", border_style="blue"))
+        else:
+            console.print(Panel("[dim]No memories yet[/dim]", title="Memory Context", border_style="dim"))
+    except Exception:
+        console.print(Panel("[dim]Could not load memory[/dim]", title="Memory Context", border_style="dim"))
+
+    try:
+        registry = get_skill_registry()
+        enabled_skills = registry.list(enabled_only=True)
+        if enabled_skills:
+            skills_text = "\n".join(
+                f"  [green]{s.name}[/green]: {', '.join(s.functions)}"
+                for s in enabled_skills
+            )
+            console.print(Panel(skills_text, title="Available Skills", border_style="green"))
+    except Exception:
+        pass
+
+
+@app.command("sdd-init")
+def sdd_init(
+    project_dir: Optional[Path] = typer.Option(None, "--dir", "-d", help="Project directory (default: cwd)"),
+):
+    """Initialize SDD directory structure for the current project."""
+    target = project_dir or Path.cwd()
+    sdd_dir, created = init_sdd_project(target)
+
+    console.print(Panel.fit(
+        f"[bold green]SDD initialized[/bold green]\n"
+        f"Directory: [cyan]{sdd_dir}[/cyan]",
+        border_style="green",
+    ))
+
+    if created:
+        table = Table(title="Created Templates")
+        table.add_column("File", style="cyan")
+        table.add_column("Status", style="green")
+        for f in created:
+            table.add_row(f, "created")
+        console.print(table)
+    else:
+        console.print("[dim]All template files already exist.[/dim]")
+
+    console.print("\n[bold]Next steps:[/bold]")
+    console.print("  1. Edit [cyan]docs/sdd/proposal.md[/cyan] with your change intent")
+    console.print("  2. Define requirements in [cyan]docs/sdd/spec.md[/cyan]")
+    console.print("  3. Document design decisions in [cyan]docs/sdd/design.md[/cyan]")
+    console.print("  4. Break work into tasks in [cyan]docs/sdd/tasks.md[/cyan]")
 
 
 async def _async_interactive(agent, project, session_id):
@@ -231,6 +504,7 @@ def skills(
     enabled_only: bool = typer.Option(True, "--enabled-only/--all", help="Show only enabled skills"),
 ):
     """List available skills."""
+    load_skills()
     registry = get_skill_registry()
     skill_list = registry.list(enabled_only=enabled_only)
 
@@ -280,6 +554,7 @@ def _show_help():
   /memory         - Show recent memory
   /facts          - Show facts for current project
   /skills         - List skills
+  /sdd            - Show SDD artifact status
   /clear          - Clear screen
   exit/quit       - Exit
 """, title="Help", border_style="blue"))
@@ -292,6 +567,8 @@ def _handle_command(cmd: str, agent: AgentOS, project: str, session_id: str):
         asyncio.run(_show_facts(agent, project))
     elif cmd == "/skills":
         asyncio.run(_show_skills())
+    elif cmd == "/sdd":
+        _show_sdd_status()
     elif cmd == "/clear":
         console.clear()
     else:
@@ -326,6 +603,30 @@ async def _show_skills():
     table.add_column("Functions", style="green")
     for s in skills:
         table.add_row(s.name, s.description, ", ".join(s.functions))
+    console.print(table)
+
+
+def _show_sdd_status():
+    status = detect_sdd_artifacts()
+    if not status.has_sdd:
+        console.print(Panel(
+            "[yellow]No SDD artifacts found in this project.[/yellow]\n"
+            "Run [bold]aki sdd-init[/bold] to create the SDD structure.",
+            title="SDD Status",
+            border_style="yellow",
+        ))
+        return
+
+    table = Table(title=f"SDD Artifacts ({status.sdd_dir})")
+    table.add_column("Artifact", style="cyan")
+    table.add_column("Status", style="bold")
+
+    for artifact in ("proposal.md", "spec.md", "design.md", "tasks.md"):
+        if artifact in status.found_artifacts:
+            table.add_row(artifact, "[green]present[/green]")
+        else:
+            table.add_row(artifact, "[dim]missing[/dim]")
+
     console.print(table)
 
 

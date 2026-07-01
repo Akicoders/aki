@@ -14,6 +14,8 @@ __all__ = [
     "N8nTriggerSkill",
     "SchedulerSkill",
     "CodeIntelSkill",
+    "BUILTIN_SKILLS",
+    "load_skills",
 ]
 
 BUILTIN_SKILLS = {
@@ -24,3 +26,19 @@ BUILTIN_SKILLS = {
     "scheduler": SchedulerSkill,
     "code_intel": CodeIntelSkill,
 }
+
+
+def load_skills(config=None) -> None:
+    """Load built-in skills into the global registry based on config."""
+    from agentos.skills.base import get_skill_registry
+    from agentos.core.config import get_config
+
+    registry = get_skill_registry()
+    skills_config = config or get_config().skills
+
+    for skill_name in skills_config.enabled:
+        if skill_name in BUILTIN_SKILLS and not registry.get(skill_name):
+            skill_cls = BUILTIN_SKILLS[skill_name]
+            skill_config = getattr(skills_config, skill_name, None)
+            skill = skill_cls(skill_config.__dict__ if skill_config else None)
+            registry.register(skill)

@@ -3,7 +3,7 @@
 Portable project memory for AI coding agents — powered by Qwen, delivered through MCP.
 
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Tests](https://img.shields.io/badge/tests-49%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-77%20passing-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 Aki is an AI agent that gives coding assistants durable project memory. It runs locally as a stdio MCP server so hosts such as OpenCode, Claude Code, and other MCP-compatible agents can retrieve project context before editing code and save new decisions after useful work.
@@ -29,6 +29,9 @@ Use Aki when you want an AI coding agent to:
 - **Episodic, semantic, and procedural memory**: stores recent events, durable facts/decisions, and repeatable procedures.
 - **Project-aware context**: uses explicit project names or current-directory detection.
 - **Host integration docs**: includes setup notes for OpenCode, Claude Code, and Antigravity-style MCP hosts.
+- **SDD-aware chat**: detects Spec-Driven Development artifacts and injects them into chat context when relevant.
+- **SDD initialization**: `aki sdd-init` bootstraps `docs/sdd/` with proposal, spec, design, and tasks templates.
+- **Sectioned interactive UI**: `aki interactive` shows memory context, skills, and SDD status at startup.
 
 ## Architecture
 
@@ -71,7 +74,7 @@ All SDD artifacts are available in [`docs/sdd/`](docs/sdd/):
 - [Design](docs/sdd/design.md) with architecture decisions
 - [Tasks](docs/sdd/tasks.md) and [Progress](docs/sdd/apply-progress.md)
 
-**Result**: 51 tests passing in <5 seconds, delivered in 4 days.
+**Result**: 77 tests passing in <25 seconds, delivered in 4 days.
 
 ## Installation
 
@@ -80,6 +83,26 @@ All SDD artifacts are available in [`docs/sdd/`](docs/sdd/):
 - Python 3.11+
 - [`uv`](https://docs.astral.sh/uv/)
 - Optional: Qwen Cloud/DashScope-compatible API key for extraction and enriched explanations
+
+### One-command installer
+
+```bash
+sh install.sh
+```
+
+The installer runs on Linux and macOS, checks for Python 3.11+, installs `uv` with Astral's installer if needed, runs `uv sync --all-extras`, and creates `.env` from `.env.example` only when `.env` does not already exist.
+
+It does not modify OpenCode, Claude Code, or any other MCP host configuration files. Use `uv run aki mcp-config <host>` to print a snippet and add it to your host config manually, or use `uv run aki mcp-setup <host>` for automatic setup.
+
+### Updating Aki
+
+To update an existing installation:
+
+```bash
+sh install.sh --update
+```
+
+This pulls the latest changes (if in a git repository), runs `uv sync --all-extras`, and confirms the update.
 
 ### From source with uv
 
@@ -101,7 +124,7 @@ The package is not published to PyPI yet. Until a release is published, install 
 
 ## Configuration
 
-Create a local environment file:
+If you used `install.sh`, `.env` is created automatically when missing. For manual setup, create a local environment file:
 
 ```bash
 cp .env.example .env
@@ -111,12 +134,16 @@ Qwen configuration:
 
 ```bash
 QWEN_API_KEY=your_qwen_api_key_here
+# Or use DASHSCOPE_API_KEY as an alternative:
+# DASHSCOPE_API_KEY=your_dashscope_api_key_here
 QWEN_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
 QWEN_MODEL=qwen3.7-max
 QWEN_EXTRACTION_MODEL=qwen3.7-plus
 QWEN_CONSOLIDATION_MODEL=qwen3.7-max
 QWEN_EMBEDDING_MODEL=text-embedding-v3
 ```
+
+Aki accepts either `QWEN_API_KEY` or `DASHSCOPE_API_KEY`. If both are set, `QWEN_API_KEY` takes precedence.
 
 Memory storage defaults:
 
@@ -153,9 +180,82 @@ uv run aki chat "remember that we use pnpm" --project my-project
 uv run aki recall "package manager" --project my-project
 uv run aki remember "The MVP runtime is MCP stdio, not HTTP" --project my-project
 uv run aki facts --project my-project
+uv run aki skills
+uv run aki doctor
+```
+
+### Automatic MCP setup
+
+To automatically configure Aki in your host's MCP configuration:
+
+```bash
+uv run aki mcp-setup opencode
+uv run aki mcp-setup claude-code
+```
+
+This creates a backup of the existing config file (if present) and merges the Aki MCP configuration without overwriting other MCP servers. Use `--dry-run` to preview changes:
+
+```bash
+uv run aki mcp-setup opencode --dry-run
+```
+
+### Health check
+
+To verify your Aki installation:
+
+```bash
+uv run aki doctor
+```
+
+This checks Python version, uv installation, environment variables, dependencies, and Qwen API connectivity.
+
+### Listing skills
+
+To see available skills:
+
+```bash
+uv run aki skills
+```
+
+Example output:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      Available Skills                           │
+├──────────────┬─────────────────────┬──────────────────┬─────────┤
+│ Name         │ Description         │ Functions        │ Enabled │
+├──────────────┼─────────────────────┼──────────────────┼─────────┤
+│ git_ops      │ Git operations      │ status, diff...  │ ✓       │
+│ filesystem   │ File operations     │ read, write...   │ ✓       │
+│ web_search   │ Web search          │ search           │ ✓       │
+│ n8n_trigger  │ n8n workflow        │ trigger          │ ✓       │
+│ scheduler    │ Task scheduling     │ schedule         │ ✓       │
+│ code_intel   │ Code intelligence   │ lint, test       │ ✓       │
+└──────────────┴─────────────────────┴──────────────────┴─────────┘
 ```
 
 The `agentos` command is retained for compatibility. A matching `aki` console script is available after installing the package.
+
+### Interactive chat with SDD awareness
+
+```bash
+uv run aki interactive --project my-project
+```
+
+The interactive mode shows a sectioned UI on startup:
+- **SDD Status** — whether the project has SDD artifacts (proposal, spec, design, tasks)
+- **Memory Context** — recent facts and decisions for the project
+- **Available Skills** — enabled skills and their functions
+
+Inside the chat, use `/sdd` to check SDD artifact status, or ask questions like "what's the spec?" to get SDD context injected into the response.
+
+### SDD initialization
+
+```bash
+uv run aki sdd-init
+```
+
+Creates `docs/sdd/` with template files: `proposal.md`, `spec.md`, `design.md`, `tasks.md`. Use this to bootstrap Spec-Driven Development for any project.
 
 ## MCP Integration
 
