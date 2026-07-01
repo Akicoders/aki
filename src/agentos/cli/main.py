@@ -8,7 +8,7 @@ import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import typer
 from rich.console import Console
@@ -17,26 +17,54 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.table import Table
 
-from agentos.agent.core import AgentOS, get_agent
+from agentos.cli.cockpit import (
+    _build_sdd_summary,
+    _collect_git_summary,
+    _format_timestamp,
+    render_cockpit_detail,
+    render_cockpit_overview,
+    render_default_entry,
+    render_projects_browse,
+    resolve_project_ref,
+)
+from agentos.cli.mcp_hosts import _get_host_config_path, _get_mcp_snippet, _merge_mcp_config
+from agentos.cockpit.navigation import run_cockpit_loop
+from agentos.cockpit import registry
+from agentos.cockpit.registry import list_projects
+from agentos.cockpit.audit.base import AuditContext, merge_findings, run_registered_passes
+from agentos.cockpit.audit.passes import PASS_REGISTRY
+from agentos.cockpit.audit.report import persist_audit
 from agentos.core.config import get_config, reset_config
-from agentos.mcp.server import run_mcp_server
-from agentos.memory.repository import MemoryRepository
 from agentos.memory.models import EventType
 from agentos.skills.base import get_skill_registry
 from agentos.skills import load_skills
 from agentos.sdd.detector import detect_sdd_artifacts, summarize_sdd_context
 from agentos.sdd.init import init_sdd_project
 
+if TYPE_CHECKING:
+    from agentos.agent.core import AgentOS
+
 app = typer.Typer(
     name="aki",
     help="Aki - AI agent with portable project memory",
     add_completion=False,
 )
+cockpit_app = typer.Typer(help="Open the operational cockpit for a project.")
+projects_app = typer.Typer(help="Browse projects when current context is unclear.")
+app.add_typer(cockpit_app, name="cockpit")
+app.add_typer(projects_app, name="projects")
 console = Console()
 
 
-@app.callback()
+def _get_agent():
+    from agentos.agent.core import get_agent
+
+    return get_agent()
+
+
+@app.callback(invoke_without_command=True)
 def callback(
+    ctx: typer.Context,
     config_path: Optional[Path] = typer.Option(None, "--config", "-c", help="Config file path"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
 ):
@@ -47,6 +75,8 @@ def callback(
     if verbose:
         import logging
         logging.basicConfig(level=logging.DEBUG)
+    if ctx.invoked_subcommand is None:
+        render_default_entry(console)
 
 
 @app.command()
@@ -57,7 +87,7 @@ def chat(
     stream: bool = typer.Option(False, "--stream", help="Stream response"),
 ):
     """Chat with Aki."""
-    agent = get_agent()
+    agent = _get_agent()
 
     async def run():
         if stream:
@@ -77,7 +107,7 @@ def interactive(
     session: Optional[str] = typer.Option(None, "--session", "-s", help="Session ID"),
 ):
     """Start interactive chat session."""
-    agent = get_agent()
+    agent = _get_agent()
     session_id = session or f"sess_{__import__('uuid').uuid4().hex[:8]}"
 
     _print_interactive_header(agent, project, session_id)
@@ -97,6 +127,8 @@ def interactive(
 @app.command("mcp")
 def mcp_server():
     """Start the Aki stdio MCP server."""
+    from agentos.mcp.server import run_mcp_server
+
     run_mcp_server()
 
 
@@ -133,52 +165,6 @@ def mcp_config(host: str = typer.Argument("opencode", help="MCP host to print co
         supported = ", ".join(sorted(snippets))
         raise typer.BadParameter(f"Unsupported host '{host}'. Supported hosts: {supported}")
     typer.echo(json.dumps(snippets[normalized_host], indent=2))
-
-
-def _get_mcp_snippet(host: str) -> dict:
-    command = ["uv", "run", "aki", "mcp"]
-    snippets = {
-        "opencode": {
-            "mcp": {
-                "aki_memory": {
-                    "type": "local",
-                    "command": command,
-                    "enabled": True,
-                }
-            }
-        },
-        "claude-code": {
-            "mcpServers": {
-                "aki_memory": {
-                    "command": command[0],
-                    "args": command[1:],
-                }
-            }
-        },
-    }
-    return snippets.get(host, {})
-
-
-def _get_host_config_path(host: str) -> Path:
-    paths = {
-        "opencode": Path.home() / ".config" / "opencode" / "opencode.json",
-        "claude-code": Path.home() / ".claude" / "claude_desktop_config.json",
-    }
-    if host not in paths:
-        supported = ", ".join(sorted(paths))
-        raise typer.BadParameter(f"Unsupported host '{host}'. Supported hosts: {supported}")
-    return paths[host]
-
-
-def _merge_mcp_config(existing: dict, snippet: dict) -> dict:
-    result = dict(existing)
-    for key, value in snippet.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = {**result[key], **value}
-        else:
-            result[key] = value
-    return result
-
 
 @app.command("mcp-setup")
 def mcp_setup(
@@ -327,7 +313,196 @@ def doctor():
         console.print("\n[yellow]Some checks failed. See above for details.[/yellow]")
 
 
-def _print_interactive_header(agent: AgentOS, project: str, session_id: str):
+@cockpit_app.callback(invoke_without_command=True)
+def cockpit_callback(
+    ctx: typer.Context,
+    path: Optional[Path] = typer.Option(None, "--path", help="Project path to open in the cockpit"),
+    interactive: bool = typer.Option(
+        False, "--interactive", "-i", help="Open the interactive drill-down navigation loop"
+    ),
+):
+    """Open the cockpit overview for the resolved project."""
+    resolved = resolve_project_ref(path)
+    ctx.obj = {"project": resolved, "path": path}
+    if ctx.invoked_subcommand is None:
+        if resolved is None:
+            render_projects_browse(
+                console,
+                current_path=(path or Path.cwd()).resolve(),
+                reason="The requested path is not a recognizable project root.",
+            )
+            return
+        if interactive:
+            exit_code = run_cockpit_loop(console, resolved)
+            raise typer.Exit(exit_code)
+        render_cockpit_overview(console, resolved)
+
+
+def _require_cockpit_project(ctx: typer.Context):
+    project = (ctx.obj or {}).get("project")
+    if project is None:
+        render_projects_browse(
+            console,
+            current_path=((ctx.obj or {}).get("path") or Path.cwd()).resolve(),
+            reason="The requested path is not a recognizable project root.",
+        )
+        raise typer.Exit(0)
+    return project
+
+
+@cockpit_app.command("action")
+def cockpit_action(ctx: typer.Context):
+    """Show Action Required drill-down."""
+    render_cockpit_detail(console, _require_cockpit_project(ctx), "action")
+
+
+@cockpit_app.command("health")
+def cockpit_health(ctx: typer.Context):
+    """Show Project Health drill-down."""
+    render_cockpit_detail(console, _require_cockpit_project(ctx), "health")
+
+
+@cockpit_app.command("memory")
+def cockpit_memory(ctx: typer.Context):
+    """Show Memory drill-down."""
+    render_cockpit_detail(console, _require_cockpit_project(ctx), "memory")
+
+
+@cockpit_app.command("sdd")
+def cockpit_sdd(ctx: typer.Context):
+    """Show SDD drill-down."""
+    render_cockpit_detail(console, _require_cockpit_project(ctx), "sdd")
+
+
+@projects_app.command("browse")
+def projects_browse(
+    filter_query: Optional[str] = typer.Option(None, "--filter", "-f", help="Filter by key or root-path substring"),
+    no_interactive: bool = typer.Option(False, "--no-interactive", help="Skip the select-to-open prompt"),
+):
+    """List known projects from the registry, with search/filter and select-to-open."""
+    projects = list_projects()
+
+    if not projects:
+        console.print(Panel(
+            "No known projects yet.\n"
+            "Open a project with [cyan]aki cockpit --path /path/to/project[/cyan] "
+            "or [cyan]cd[/cyan] into it and run [cyan]aki[/cyan] to register it.",
+            title="Projects Browse — Onboarding",
+            border_style="yellow",
+        ))
+        return
+
+    if filter_query:
+        needle = filter_query.lower()
+        filtered = [
+            record for record in projects
+            if needle in record.key.lower() or needle in record.root_path.lower()
+        ]
+    else:
+        filtered = projects
+
+    if filter_query and not filtered:
+        console.print(f"[yellow]No projects match filter '{filter_query}'.[/yellow]")
+        return
+
+    rows = []
+    for record in filtered:
+        root = Path(record.root_path)
+        git_summary = _collect_git_summary(root)
+        sdd_summary = _build_sdd_summary(root)
+        rows.append((record, git_summary, sdd_summary))
+
+    table = Table(title="Known Projects")
+    table.add_column("#", style="dim")
+    table.add_column("Key", style="cyan", overflow="fold")
+    table.add_column("Root Path", style="white", overflow="fold")
+    table.add_column("Branch", style="yellow")
+    table.add_column("Git", style="yellow")
+    table.add_column("SDD", style="magenta")
+    table.add_column("Last Memory Activity", style="dim")
+    table.add_column("Last Audit", style="dim")
+
+    for index, (record, git_summary, sdd_summary) in enumerate(rows, start=1):
+        dirty_state = (
+            "dirty" if git_summary.is_dirty
+            else ("clean" if git_summary.is_dirty is False else "unknown")
+        )
+        table.add_row(
+            str(index),
+            record.key,
+            record.root_path,
+            git_summary.branch or "unknown",
+            dirty_state,
+            sdd_summary.completeness,
+            _format_timestamp(record.last_memory_activity_at),
+            _format_timestamp(record.last_audit_at),
+        )
+
+    console.print(table)
+
+    if no_interactive:
+        return
+
+    choice = Prompt.ask("Select a project number to open (or press Enter to skip)", default="")
+    if not choice.strip():
+        return
+
+    try:
+        selected_index = int(choice.strip()) - 1
+    except ValueError:
+        console.print("[yellow]Invalid selection.[/yellow]")
+        return
+
+    if not (0 <= selected_index < len(rows)):
+        console.print("[yellow]Invalid selection.[/yellow]")
+        return
+
+    selected_record = rows[selected_index][0]
+    project_ref = resolve_project_ref(Path(selected_record.root_path))
+    if project_ref is None:
+        console.print(f"[red]Could not resolve project at {selected_record.root_path}.[/red]")
+        return
+    render_cockpit_overview(console, project_ref)
+
+
+def _resolve_audit_project_ref(project: str):
+    """Resolve a CLI-supplied project argument (registry key or filesystem path)."""
+    for record in list_projects():
+        if record.key == project:
+            return resolve_project_ref(Path(record.root_path))
+    candidate_path = Path(project).expanduser()
+    if candidate_path.exists():
+        return resolve_project_ref(candidate_path)
+    return None
+
+
+@app.command("audit")
+def audit_project(
+    project: str = typer.Argument(..., help="Project key (from the registry) or filesystem path to audit"),
+):
+    """Run the read-only audit engine and generate a durable report (docs/audits/...)."""
+    project_ref = _resolve_audit_project_ref(project)
+    if project_ref is None:
+        console.print(f"[red]project resolution failure: could not resolve project '{project}'[/red]")
+        raise typer.Exit(1)
+
+    generated_at = datetime.now()
+    ctx = AuditContext(project=project_ref, root_path=project_ref.root_path, generated_at=generated_at)
+    pass_results = run_registered_passes(ctx, PASS_REGISTRY)
+    findings = merge_findings(pass_results)
+
+    outcome = persist_audit(project_ref.root_path, project_ref.key, generated_at, findings)
+    if not outcome.success:
+        console.print(f"[red]{outcome.failed_stage}[/red]")
+        if outcome.report_path is not None:
+            console.print(f"[yellow]Partial artifact preserved at {outcome.report_path}[/yellow]")
+        raise typer.Exit(1)
+
+    registry.touch_last_audit(project_ref.root_path)
+    console.print(f"[green]✓[/green] Audit report written to {outcome.report_path}")
+
+
+def _print_interactive_header(agent: "AgentOS", project: str, session_id: str):
     console.print(Panel.fit(
         f"[bold cyan]Aki Interactive[/bold cyan]\n"
         f"Project: [yellow]{project}[/yellow] | Session: [dim]{session_id}[/dim]\n"
@@ -430,7 +605,7 @@ def remember(
     type: str = typer.Option("user_preference", "--type", "-t", help="Event type"),
 ):
     """Explicitly store a memory."""
-    agent = get_agent()
+    agent = _get_agent()
 
     async def run():
         event = await agent.remember(content, project, EventType(type))
@@ -446,7 +621,7 @@ def recall(
     limit: int = typer.Option(10, "--limit", "-l", help="Max results"),
 ):
     """Search memory."""
-    agent = get_agent()
+    agent = _get_agent()
 
     async def run():
         context = await agent.recall(query, project)
@@ -460,7 +635,7 @@ def facts(
     project: str = typer.Option("default", "--project", "-p", help="Project name"),
 ):
     """List all facts for a project."""
-    agent = get_agent()
+    agent = _get_agent()
 
     async def run():
         fact_list = await agent.get_facts(project)
@@ -490,7 +665,7 @@ def set_fact(
     confidence: float = typer.Option(1.0, "--confidence", "-c", help="Confidence (0-1)"),
 ):
     """Set a fact manually."""
-    agent = get_agent()
+    agent = _get_agent()
 
     async def run():
         await agent.set_fact(key, value, project, confidence)
@@ -560,7 +735,7 @@ def _show_help():
 """, title="Help", border_style="blue"))
 
 
-def _handle_command(cmd: str, agent: AgentOS, project: str, session_id: str):
+def _handle_command(cmd: str, agent: "AgentOS", project: str, session_id: str):
     if cmd == "/memory":
         asyncio.run(_show_memory(agent, project))
     elif cmd == "/facts":
@@ -575,12 +750,12 @@ def _handle_command(cmd: str, agent: AgentOS, project: str, session_id: str):
         console.print(f"[red]Unknown command: {cmd}[/red]")
 
 
-async def _show_memory(agent: AgentOS, project: str):
+async def _show_memory(agent: "AgentOS", project: str):
     context = await agent.recall("", project)
     _print_context(context, 20)
 
 
-async def _show_facts(agent: AgentOS, project: str):
+async def _show_facts(agent: "AgentOS", project: str):
     facts = await agent.get_facts(project)
     if not facts:
         console.print("[dim]No facts[/dim]")

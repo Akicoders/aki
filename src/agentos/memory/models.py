@@ -166,6 +166,17 @@ class MemoryFact(BaseModel):
         )
 
 
+class ProjectRefModel(Base):
+    __tablename__ = "project_refs"
+
+    root_path: Mapped[str] = mapped_column(String(1024), primary_key=True)
+    key: Mapped[str] = mapped_column(String(256), index=True)
+    source: Mapped[str] = mapped_column(String(32), default="detected")
+    last_opened_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_audit_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_memory_activity_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
 class Skill(BaseModel):
     name: str
     description: str
@@ -198,6 +209,36 @@ class Skill(BaseModel):
             functions=self.functions_json,
             enabled=self.enabled,
             config=self.config_json,
+        )
+
+
+class ProjectRefRecord(BaseModel):
+    root_path: str
+    key: str
+    source: str = "detected"
+    last_opened_at: Optional[datetime] = None
+    last_audit_at: Optional[datetime] = None
+    last_memory_activity_at: Optional[datetime] = None
+
+    @classmethod
+    def from_model(cls, model: ProjectRefModel) -> "ProjectRefRecord":
+        return cls(
+            root_path=model.root_path,
+            key=model.key,
+            source=model.source,
+            last_opened_at=model.last_opened_at,
+            last_audit_at=model.last_audit_at,
+            last_memory_activity_at=model.last_memory_activity_at,
+        )
+
+    def to_model(self) -> ProjectRefModel:
+        return ProjectRefModel(
+            root_path=self.root_path,
+            key=self.key,
+            source=self.source,
+            last_opened_at=self.last_opened_at,
+            last_audit_at=self.last_audit_at,
+            last_memory_activity_at=self.last_memory_activity_at,
         )
 
 

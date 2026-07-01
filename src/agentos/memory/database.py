@@ -7,7 +7,7 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from .models import Base, MemoryEventModel, MemoryFactModel, SkillModel
+from .models import Base, MemoryEventModel, MemoryFactModel, ProjectRefModel, SkillModel
 
 
 def get_engine(db_path: Path) -> Engine:
