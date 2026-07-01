@@ -12,6 +12,7 @@ preserving whatever partial artifact was produced.
 from __future__ import annotations
 
 import json
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -34,9 +35,9 @@ _PRIORITY_LABELS = {
 
 
 def _priority_counts(findings: list[AuditFinding]) -> dict[str, int]:
-    counts = {p: 0 for p in _PRIORITY_ORDER}
+    counts: Counter[str] = Counter()
     for finding in findings:
-        counts[finding.priority] = counts.get(finding.priority, 0) + 1
+        counts[finding.priority] += 1
     return counts
 
 
