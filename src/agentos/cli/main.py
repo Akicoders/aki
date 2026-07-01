@@ -28,6 +28,13 @@ from agentos.cli.cockpit import (
     resolve_project_ref,
 )
 from agentos.cli.mcp_hosts import _get_host_config_path, _get_mcp_snippet, _merge_mcp_config
+from agentos.cli.update import (
+    UpdateError,
+    locate_installed_source_dir,
+    resolve_uv_binary,
+    run_update_command,
+    validate_source_checkout,
+)
 from agentos.cockpit.navigation import run_cockpit_loop
 from agentos.cockpit import registry
 from agentos.cockpit.registry import list_projects
@@ -336,6 +343,54 @@ def doctor():
         console.print("\n[green]All checks passed.[/green]")
     else:
         console.print("\n[yellow]Some checks failed. See above for details.[/yellow]")
+
+
+@app.command()
+def update():
+    """Update the Aki installation from its source checkout."""
+    source_dir = locate_installed_source_dir()
+    if source_dir is None:
+        console.print(
+            "[red]Aki does not appear to be installed from a source checkout.[/red]\n"
+            "[yellow]`aki update` only works for Linux/macOS installs backed by a cloned "
+            "repository. Re-clone the repo and install from source if you need this command.[/yellow]"
+        )
+        raise typer.Exit(1)
+
+    try:
+        source_dir = validate_source_checkout(source_dir)
+        uv_bin = resolve_uv_binary()
+
+        console.print(f"[cyan]Updating Aki from {source_dir}[/cyan]")
+
+        console.print("[cyan]Pulling latest changes with git pull...[/cyan]")
+        run_update_command(
+            ["git", "pull"],
+            cwd=source_dir,
+            missing_message="git is required to update Aki but was not found in PATH.",
+            failure_message="git pull failed",
+        )
+
+        console.print("[cyan]Syncing dependencies with uv sync --all-extras...[/cyan]")
+        run_update_command(
+            [uv_bin, "sync", "--all-extras"],
+            cwd=source_dir,
+            missing_message="uv is required to update Aki but was not found.",
+            failure_message="uv sync --all-extras failed",
+        )
+
+        console.print("[cyan]Refreshing the global aki tool shim...[/cyan]")
+        run_update_command(
+            [uv_bin, "tool", "install", "--editable", ".", "--force"],
+            cwd=source_dir,
+            missing_message="uv is required to refresh the Aki tool install but was not found.",
+            failure_message="uv tool install --editable . --force failed",
+        )
+    except UpdateError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from exc
+
+    console.print("[green]✓[/green] Aki updated successfully.")
 
 
 @cockpit_app.callback(invoke_without_command=True)

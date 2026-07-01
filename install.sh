@@ -47,6 +47,12 @@ do_update() {
   info "Running uv sync --all-extras..."
   "$uv_bin" sync --all-extras || fail "uv sync --all-extras failed."
 
+  # Re-register the uv tool shim: editable installs pick up code changes
+  # automatically, but re-running this is cheap and keeps the shim valid
+  # if metadata (entry points, deps) changed.
+  info "Re-installing aki as a uv tool..."
+  "$uv_bin" tool install --editable . --force || fail "uv tool install failed."
+
   info "Aki updated successfully."
   exit 0
 }
@@ -108,6 +114,9 @@ info "Using uv at $uv_bin"
 info "Running uv sync --all-extras..."
 "$uv_bin" sync --all-extras || fail "uv sync --all-extras failed."
 
+info "Installing aki as a global uv tool..."
+"$uv_bin" tool install --editable . --force || fail "uv tool install failed."
+
 if [ -f ".env" ]; then
   info ".env already exists; leaving it unchanged."
 else
@@ -116,8 +125,8 @@ else
 fi
 
 printf '\nNext steps:\n'
-printf '1. uv run aki --help\n'
-printf '2. uv run aki mcp-config opencode\n'
+printf '1. aki --help\n'
+printf '2. aki mcp-config opencode\n'
 
 if ! command -v uv >/dev/null 2>&1; then
   printf '\nNote: uv is installed at %s but is not on your PATH in this shell yet.\n' "$uv_bin"
@@ -125,4 +134,4 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 printf '\nNote: install.sh does not modify OpenCode, Claude Code, or any other host MCP configuration files.\n'
-printf 'Use `uv run aki mcp-config <host>` to print a snippet and add it to your host config manually.\n'
+printf 'Use `aki mcp-config <host>` to print a snippet and add it to your host config manually.\n'

@@ -99,13 +99,19 @@ It does not modify OpenCode, Claude Code, or any other MCP host configuration fi
 
 ### Updating Aki
 
-To update an existing installation:
+For source-based installs, `aki update` is the recommended update path:
+
+```bash
+aki update
+```
+
+This pulls the latest changes from the cloned repository, runs `uv sync --all-extras`, refreshes the global editable `aki` tool install, and confirms the update.
+
+The legacy installer path still exists if you need it:
 
 ```bash
 sh install.sh --update
 ```
-
-This pulls the latest changes (if in a git repository), runs `uv sync --all-extras`, and confirms the update.
 
 ### From source with uv
 
