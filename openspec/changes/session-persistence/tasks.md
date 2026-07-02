@@ -188,13 +188,13 @@ Spec coverage: "Guaranteed Checkpoint Rehydration". Depends on Phase 2 merged
 (needs `read_checkpoint` and populated checkpoint data to rehydrate).
 
 ### 3.1 `render_checkpoint` deterministic bounded formatter
-- [ ] **RED**: `test_render_checkpoint_respects_char_cap` — feed a checkpoint
+- [x] **RED**: `test_render_checkpoint_respects_char_cap` — feed a checkpoint
       dict whose serialized rendering would exceed
       `CHECKPOINT_REHYDRATION_CHAR_CAP`, assert output length <= cap and
       truncation is deterministic (same input → same truncated output).
-- [ ] **RED**: `test_render_checkpoint_handles_empty_open_items` — no
+- [x] **RED**: `test_render_checkpoint_handles_empty_open_items` — no
       open_items → renders without error, no stray formatting artifacts.
-- [ ] **GREEN**: implement `render_checkpoint(checkpoint: dict, cap: int) -> str`
+- [x] **GREEN**: implement `render_checkpoint(checkpoint: dict, cap: int) -> str`
       as a plain function (module-level, no class state), producing a
       human/model-readable summary of `goal`, `open_items`,
       `last_tool_result`, hard-capped to `cap` chars.
@@ -202,7 +202,7 @@ Spec coverage: "Guaranteed Checkpoint Rehydration". Depends on Phase 2 merged
   Parallelizable: yes, can start in parallel with 3.2's RED tests.
 
 ### 3.2 `_build_messages`: thread `session_id`, inject reserved checkpoint slot
-- [ ] **RED**: `test_build_messages_injects_checkpoint_slot` — mock
+- [x] **RED**: `test_build_messages_injects_checkpoint_slot` — mock
       `read_checkpoint` to return a populated dict, call `_build_messages`
       with a `session_id`, assert the returned messages contain a system
       message with the rendered checkpoint content, positioned before the
@@ -211,16 +211,16 @@ Spec coverage: "Guaranteed Checkpoint Rehydration". Depends on Phase 2 merged
       call sequence/mocked budget-fit function was not invoked on this
       content, or by asserting presence even when budget-fit is mocked to
       drop everything).
-- [ ] **RED**: `test_build_messages_no_checkpoint_omits_slot` — mock
+- [x] **RED**: `test_build_messages_no_checkpoint_omits_slot` — mock
       `read_checkpoint` to return `None`, assert no extra system message is
       added and no error is raised.
-- [ ] **RED**: `test_build_messages_checkpoint_survives_budget_truncation` —
+- [x] **RED**: `test_build_messages_checkpoint_survives_budget_truncation` —
       construct a scenario where `assemble_context`'s facts/events are large
       enough that budget-fit truncation would drop them, assert the
       checkpoint slot content is still present in full (up to its own cap)
       in the final message list. This directly covers the "Checkpoint
       survives budget-fit truncation" spec scenario.
-- [ ] **GREEN**: add `session_id` parameter to `_build_messages` (threaded
+- [x] **GREEN**: add `session_id` parameter to `_build_messages` (threaded
       from `chat()`'s existing call site, design.md ~line 88); after the base
       system prompt and BEFORE the memory-context message, call
       `self.memory.read_checkpoint(project, session_id)` and, if present,
@@ -230,7 +230,7 @@ Spec coverage: "Guaranteed Checkpoint Rehydration". Depends on Phase 2 merged
   integration). Parallelizable: no (core wiring task).
 
 ### 3.3 Reserved-key facts must not leak into `assemble_context` fallback path
-- [ ] **RED**: `test_assemble_context_excludes_reserved_session_facts` — seed
+- [x] **RED**: `test_assemble_context_excludes_reserved_session_facts` — seed
       the repository with both a `session:last` fact and a
       `session:{id}:checkpoint` fact plus at least one normal fact, in the
       SAME `project:{name}` scope; call `assemble_context`'s
@@ -238,7 +238,7 @@ Spec coverage: "Guaranteed Checkpoint Rehydration". Depends on Phase 2 merged
       `search_facts` falls back to scope listing); assert the reserved-prefix
       facts (`RESERVED_FACT_KEY_PREFIX = "session:"`) are filtered out and
       only the normal fact(s) surface.
-- [ ] **GREEN**: add an additive filter in the `get_facts_by_scope` fallback
+- [x] **GREEN**: add an additive filter in the `get_facts_by_scope` fallback
       call site inside `assemble_context` (per design.md section 3 and
       "Risk" callout in section 10) — exclude any fact whose `key` starts
       with `RESERVED_FACT_KEY_PREFIX`. No change to ranking/relevance logic
@@ -250,7 +250,7 @@ Spec coverage: "Guaranteed Checkpoint Rehydration". Depends on Phase 2 merged
   `_build_messages`).
 
 ### 3.4 Deferred-config constants consolidation check
-- [ ] Confirm `CHECKPOINT_FIELD_CHAR_CAP`, `CHECKPOINT_REHYDRATION_CHAR_CAP`,
+- [x] Confirm `CHECKPOINT_FIELD_CHAR_CAP`, `CHECKPOINT_REHYDRATION_CHAR_CAP`,
       `RESERVED_FACT_KEY_PREFIX`, `LAST_SESSION_KEY` (memory side) and
       `CHECKPOINT_CADENCE_TURNS` (agent/core.py side) all exist as named
       module constants with a `# deferred config` comment marker (per
@@ -279,13 +279,13 @@ single highest-risk mechanical bug in this change:
 > updating in place, silently accumulating duplicate `session:last` and
 > `session:{id}:checkpoint` rows.
 
-- [ ] Task 1.1's `_upsert_reserved_fact` helper is the ONLY code path allowed
+- [x] Task 1.1's `_upsert_reserved_fact` helper is the ONLY code path allowed
       to write `session:last` or `session:{id}:checkpoint` facts — no other
       call site should construct a raw `MemoryFact` for these reserved keys
       and call `upsert_fact` directly. Verify this via code review at PR #2
       and PR #3 time (both `write_checkpoint` and `touch_last_session` must
       route through `_upsert_reserved_fact`).
-- [ ] Regression test `test_write_checkpoint_no_duplicate_rows_across_multiple_writes`
+- [x] Regression test `test_write_checkpoint_no_duplicate_rows_across_multiple_writes`
       (task 2.2) is the concrete proof this gotcha is closed for the
       checkpoint path; `test_touch_last_session_upserts_pointer` (task 1.2)
       is the proof for the last-session pointer path.

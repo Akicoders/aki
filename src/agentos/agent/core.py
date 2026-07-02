@@ -9,7 +9,8 @@ from datetime import datetime
 from typing import Any, AsyncGenerator, Callable, Optional
 
 from agentos.core.config import get_config, AgentConfig
-from agentos.memory.repository import MemoryRepository, create_event
+from agentos.memory.repository import MemoryRepository, create_event, render_checkpoint
+from agentos.memory.repository import CHECKPOINT_REHYDRATION_CHAR_CAP
 from agentos.memory.models import MemoryContext, EventType, MemoryEvent
 from agentos.qwen.client import QwenClient, ChatResponse, get_qwen_client
 from agentos.skills.base import SkillRegistry, SkillResult, get_skill_registry
@@ -17,6 +18,9 @@ from agentos.skills import BUILTIN_SKILLS
 from agentos.sdd.detector import detect_sdd_artifacts, summarize_sdd_context
 
 logger = logging.getLogger(__name__)
+
+# --- Deferred config (see follow-up: wire into AgentConfig) ---
+CHECKPOINT_CADENCE_TURNS = 1  # write checkpoint every N turns (1 = every turn)
 
 StatusCallback = Callable[[str], None]
 
@@ -95,7 +99,9 @@ class AgentOS:
         )
 
         # 3. Build messages for LLM
-        messages: list[dict[str, Any]] = self._build_messages(user_input, context, project)
+        messages: list[dict[str, Any]] = self._build_messages(
+            user_input, context, project, session_id=session_id
+        )
 
         # 4. Get available tools
         tools: list[dict[str, Any]] = self.skills.get_all_tools()
@@ -135,6 +141,7 @@ class AgentOS:
         user_input: str,
         context: MemoryContext,
         project: str,
+        session_id: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         """Build message history for LLM."""
         system_prompt = self.config.system_prompt_template or (
@@ -146,6 +153,19 @@ class AgentOS:
         messages = [
             {"role": "system", "content": system_prompt},
         ]
+
+        # Reserved checkpoint slot: injected BEFORE the memory-context message,
+        # read by exact (project, session_id) key, and deliberately NOT routed
+        # through context.format_for_prompt / _fit_context_to_budget — it is
+        # immune to the budget-fit truncation that governs facts/events (see
+        # design.md section 4b, ADR-2).
+        if session_id:
+            checkpoint = self.memory.read_checkpoint(project, session_id)
+            if checkpoint:
+                messages.append({
+                    "role": "system",
+                    "content": render_checkpoint(checkpoint, cap=CHECKPOINT_REHYDRATION_CHAR_CAP),
+                })
 
         # Inject memory context
         memory_text = context.format_for_prompt(max_tokens=get_config().memory.max_context_tokens)
