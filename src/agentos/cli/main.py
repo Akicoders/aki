@@ -692,7 +692,7 @@ async def _async_interactive(agent, project, session_id):
                 _show_help()
                 continue
             if user_input.startswith("/"):
-                _handle_command(user_input, agent, project, session_id)
+                await _handle_command(user_input, agent, project, session_id)
                 continue
 
             response = await agent.chat(user_input, project, session_id)
@@ -842,13 +842,13 @@ def _show_help():
 """, title="Help", border_style="blue"))
 
 
-def _handle_command(cmd: str, agent: "AgentOS", project: str, session_id: str):
+async def _handle_command(cmd: str, agent: "AgentOS", project: str, session_id: str):
     if cmd == "/memory":
-        asyncio.run(_show_memory(agent, project))
+        await _show_memory(agent, project)
     elif cmd == "/facts":
-        asyncio.run(_show_facts(agent, project))
+        await _show_facts(agent, project)
     elif cmd == "/skills":
-        asyncio.run(_show_skills())
+        await _show_skills()
     elif cmd == "/sdd":
         _show_sdd_status()
     elif cmd == "/clear":

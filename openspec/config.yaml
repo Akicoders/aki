@@ -1,0 +1,53 @@
+schema: spec-driven
+version: "1.0"
+
+context: |
+  Tech stack: Python 3.11+, Typer CLI, agentos (MCP/AI agent framework)
+  AI: Qwen models via OpenAI-compatible API, LLM streaming, embeddings
+  Memory: SQLite + ChromaDB for vector storage, SQLAlchemy ORM
+  MCP: Server implementation with resource/tool management
+  Architecture: Modular CLI + MCP servers + AI agent coordination
+  Testing: pytest with asyncio, coverage, marked layers (unit/integration/e2e)
+  Code quality: ruff (lint), mypy (type check), black/isort (format)
+  CI/CD: GitHub Actions (lint, test, coverage upload)
+
+rules:
+  proposal:
+    - Include rollback/recovery plan for agentos agent coordination changes
+    - Clarify impact on MCP servers and memory persistence
+    - Consider backward compatibility with CLI commands
+  specs:
+    - Use Given/When/Then for agent interaction scenarios
+    - Document memory/vector store state transitions
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+    - Include pytest markers in test requirements (unit/integration/e2e)
+  design:
+    - Include async flow diagrams for agent/MCP interactions
+    - Document Pydantic model schemas and validation rules
+    - Architecture decisions with rationale for SQLAlchemy/ChromaDB choices
+  tasks:
+    - Group by module (cli, agent, memory, mcp, sdd)
+    - Mark test-driven requirements (RED-GREEN-REFACTOR)
+    - Keep tasks completable in one focused session
+  apply:
+    tdd: true
+    test_command: "pytest -xvs"
+    coverage_threshold: 75
+    follow_existing_patterns: |
+      - Use Pydantic for config and model validation
+      - Use structlog for structured logging
+      - Use Typer decorators for CLI command definitions
+      - Use SQLAlchemy for ORM and migrations via alembic
+      - Use pytest-asyncio for async test definitions
+  verify:
+    test_command: "pytest -v --cov=src/agentos --cov-report=xml"
+    lint_command: "ruff check ."
+    type_check_command: "mypy src/agentos"
+    coverage_threshold: 75
+  archive:
+    - Merge delta specs into openspec/specs/{domain}/spec.md
+    - Update related test markers and CI configuration
+
+strict_tdd: true
+artifact_store: hybrid
+last_initialized: "2026-07-01"
