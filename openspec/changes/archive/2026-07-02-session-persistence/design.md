@@ -397,5 +397,3 @@ only.
   documented, optionally warned.
 - **Deferred:** LLM-derived `open_items`, config.py wiring, cadence > 1 — out of scope
   this cycle.
-</content>
-</invoke>
