@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Aki Cockpit - {{ snapshot.project.key }}{% endblock %}
+{% block header %}{{ snapshot.project.key }}{% endblock %}
+
+{% block content %}
+<p>Root: {{ snapshot.project.root_path }} | Branch: {{ snapshot.git_summary.branch or "n/a" }} | Refreshed: {{ snapshot.generated_at }}</p>
+
+<div class="grid">
+  <section class="panel">
+    <h2>Action Required</h2>
+    {% if snapshot.action_items %}
+    <ul>
+      {% for item in snapshot.action_items %}
+      <li><strong>{{ item.severity|upper }}</strong> {{ item.title }} — {{ item.evidence }} (<code>{{ item.command }}</code>)</li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p>No immediate action required from the current snapshot.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Project Health</h2>
+    {% if snapshot.health_checks %}
+    <ul>
+      {% for check in snapshot.health_checks %}
+      <li><strong>{{ check.id }}</strong> ({{ check.status }}): {{ check.summary }}</li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p>No health checks available.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Memory</h2>
+    {% if snapshot.memory_summary.recent_facts %}
+    <ul>
+      {% for fact in snapshot.memory_summary.recent_facts %}
+      <li>{{ fact.key }}: {{ fact.value }}</li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p>No durable facts yet.</p>
+    {% endif %}
+    <p>Decision: {{ snapshot.memory_summary.latest_decision or "none yet" }}</p>
+    <p>Workflow: {{ snapshot.memory_summary.recent_workflow_memory or "none yet" }}</p>
+  </section>
+
+  <section class="panel">
+    <h2>SDD Status</h2>
+    <p>Completeness: {{ snapshot.sdd_summary.completeness }}</p>
+    <p>Directory: {{ snapshot.sdd_summary.sdd_dir or "not detected" }}</p>
+    <p>Latest: {{ snapshot.sdd_summary.latest_artifact or "none" }}</p>
+    <p>{{ snapshot.sdd_summary.next_step }}</p>
+  </section>
+</div>
+
+<p><a href="/">Back to project list</a></p>
+{% endblock %}
