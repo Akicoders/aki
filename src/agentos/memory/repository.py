@@ -1,6 +1,7 @@
 """Memory repository - data access layer."""
 
 import io
+import json
 import logging
 import os
 import warnings
@@ -294,6 +295,50 @@ class MemoryRepository:
         """Return the last-used session_id for a project, if any."""
         fact = self.get_fact(LAST_SESSION_KEY, f"project:{project}")
         return fact.value if fact else None
+
+    def write_checkpoint(
+        self,
+        project: str,
+        session_id: str,
+        *,
+        goal: str,
+        last_response: str,
+        last_tool_result: str,
+        iterations_exhausted: bool,
+    ) -> None:
+        """Upsert the structured per-session checkpoint and touch session:last.
+
+        Deterministic JSON snapshot (see design.md section 3). Free-text
+        fields are hard-capped before serialization so the row and its
+        rehydrated render stay bounded.
+        """
+        payload = {
+            "v": 1,
+            "session_id": session_id,
+            "project": project,
+            "goal": (goal or "")[:CHECKPOINT_FIELD_CHAR_CAP],
+            "open_items": [],
+            "last_tool_result": (last_tool_result or "")[:CHECKPOINT_FIELD_CHAR_CAP],
+            "last_response": (last_response or "")[:CHECKPOINT_FIELD_CHAR_CAP],
+            "iterations_exhausted": iterations_exhausted,
+            "updated_at": datetime.utcnow().isoformat() + "Z",
+        }
+        key = f"session:{session_id}:checkpoint"
+        self._upsert_reserved_fact(key, f"project:{project}", json.dumps(payload))
+        self.touch_last_session(project, session_id)
+
+    def read_checkpoint(self, project: str, session_id: str) -> Optional[dict]:
+        """Return the checkpoint dict for a session, or None if absent."""
+        fact = self.get_fact(f"session:{session_id}:checkpoint", f"project:{project}")
+        if fact is None:
+            return None
+        data = json.loads(fact.value)
+        data.setdefault("v", 1)
+        data.setdefault("open_items", [])
+        data.setdefault("last_tool_result", "")
+        data.setdefault("last_response", "")
+        data.setdefault("iterations_exhausted", False)
+        return data
 
     def increment_fact_access(self, fact_id: str) -> None:
         with self.db.session() as session:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, AsyncGenerator, Callable, Optional
 
@@ -18,6 +19,15 @@ from agentos.sdd.detector import detect_sdd_artifacts, summarize_sdd_context
 logger = logging.getLogger(__name__)
 
 StatusCallback = Callable[[str], None]
+
+
+@dataclass
+class ReasoningOutcome:
+    """Result of `_reasoning_loop`: final response text plus checkpoint-relevant metadata."""
+
+    response: str
+    last_tool_summary: str
+    exhausted: bool
 
 
 def _notify_status(status_callback: Optional[StatusCallback], message: str) -> None:
@@ -92,7 +102,8 @@ class AgentOS:
 
         # 5. Reasoning loop
         _notify_status(status_callback, "Reasoning with Qwen")
-        response = await self._reasoning_loop(messages, tools, project, session_id)
+        outcome = await self._reasoning_loop(messages, tools, project, session_id)
+        response = outcome.response
 
         # 6. Store agent response
         _notify_status(status_callback, "Saving conversation")
@@ -103,6 +114,17 @@ class AgentOS:
             meta={"role": "assistant"},
             source="agent",
             session_id=session_id,
+        )
+
+        # 6b. Persist structured checkpoint (mutable current-state), every turn
+        # (success or iteration-exhaustion), see design.md section 4a.
+        self.memory.write_checkpoint(
+            project=project,
+            session_id=session_id,
+            goal=user_input,
+            last_response=response,
+            last_tool_result=outcome.last_tool_summary,
+            iterations_exhausted=outcome.exhausted,
         )
 
         logger.info(f"Agent [{session_id}]: {response[:100]}")
@@ -168,7 +190,7 @@ class AgentOS:
         tools: list[dict[str, Any]],
         project: str,
         session_id: str,
-    ) -> str:
+    ) -> ReasoningOutcome:
         """Execute reasoning loop with tool calls."""
         max_iterations = self.config.max_iterations
         temperature = self.config.temperature
@@ -194,7 +216,11 @@ class AgentOS:
 
             # If no tool calls, we're done
             if not response.tool_calls:
-                return response.content
+                return ReasoningOutcome(
+                    response=response.content,
+                    last_tool_summary=", ".join(last_tools_used[-3:]),
+                    exhausted=False,
+                )
 
             # Execute tool calls
             for tool_call in response.tool_calls:
@@ -238,7 +264,11 @@ class AgentOS:
                 )
 
         # Max iterations reached
-        return self._format_exhaustion_message(max_iterations, total_tool_calls, last_tools_used)
+        return ReasoningOutcome(
+            response=self._format_exhaustion_message(max_iterations, total_tool_calls, last_tools_used),
+            last_tool_summary=", ".join(last_tools_used[-3:]),
+            exhausted=True,
+        )
 
     @staticmethod
     def _format_exhaustion_message(

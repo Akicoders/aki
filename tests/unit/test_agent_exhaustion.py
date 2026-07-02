@@ -53,9 +53,10 @@ def test_exhaustion_message_is_honest_and_actionable(agent_with_infinite_tool_ca
     must report concrete usage: limit, tool call count, last tools used."""
     agent = agent_with_infinite_tool_calls
 
-    result = asyncio.run(
+    outcome = asyncio.run(
         agent._reasoning_loop(messages=[], tools=[], project="default", session_id="s1")
     )
+    result = outcome.response
 
     assert "3" in result  # max_iterations surfaced
     assert "memory.recall" in result  # last tool used surfaced

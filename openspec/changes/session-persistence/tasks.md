@@ -107,17 +107,17 @@ Spec coverage: "Structured Checkpoint Write". Depends on Phase 1 merged
 `session_id` into `chat()`).
 
 ### 2.1 Repository: `write_checkpoint` / `read_checkpoint` core
-- [ ] **RED**: `test_write_then_read_checkpoint_roundtrip` — write with all
+- [x] **RED**: `test_write_then_read_checkpoint_roundtrip` — write with all
       fields, read back, assert `goal`, `open_items`, `last_tool_result`,
       `last_response`, `iterations_exhausted` match.
-- [ ] **RED**: `test_write_checkpoint_caps_long_fields` — oversize `goal`
+- [x] **RED**: `test_write_checkpoint_caps_long_fields` — oversize `goal`
       (> `CHECKPOINT_FIELD_CHAR_CAP`) truncated deterministically before
       serialize.
-- [ ] **RED**: `test_read_checkpoint_missing_returns_none`.
-- [ ] **RED**: `test_read_checkpoint_tolerates_missing_version` — hand-craft a
+- [x] **RED**: `test_read_checkpoint_missing_returns_none`.
+- [x] **RED**: `test_read_checkpoint_tolerates_missing_version` — hand-craft a
       JSON blob without `"v"` key, assert `read_checkpoint` does not raise and
       returns a usable dict.
-- [ ] **GREEN**: implement `MemoryRepository.write_checkpoint(project,
+- [x] **GREEN**: implement `MemoryRepository.write_checkpoint(project,
       session_id, *, goal, last_response, last_tool_result,
       iterations_exhausted)` — caps each free-text field to
       `CHECKPOINT_FIELD_CHAR_CAP`, serializes the JSON shape from design.md
@@ -128,9 +128,9 @@ Spec coverage: "Structured Checkpoint Write". Depends on Phase 1 merged
 - Depends on: 1.1 (reuses `_upsert_reserved_fact`). Parallelizable: no.
 
 ### 2.2 Repository: checkpoint write also touches `session:last` — no duplicate rows
-- [ ] **RED**: `test_write_checkpoint_touches_last_session` — after
+- [x] **RED**: `test_write_checkpoint_touches_last_session` — after
       `write_checkpoint`, `get_last_session` returns the same `session_id`.
-- [ ] **RED**: `test_write_checkpoint_no_duplicate_rows_across_multiple_writes`
+- [x] **RED**: `test_write_checkpoint_no_duplicate_rows_across_multiple_writes`
       — call `write_checkpoint` 3+ times for the SAME `session_id` (varying
       `goal`/fields each time) → assert exactly ONE `session:{id}:checkpoint`
       row exists in the backing store (query facts by scope/key prefix
@@ -138,17 +138,17 @@ Spec coverage: "Structured Checkpoint Write". Depends on Phase 1 merged
       dedicated regression test named in the task brief, guarding the
       `upsert_fact`-keys-on-`id` gotcha at the checkpoint-write level (not
       just the generic helper level in 1.1).
-- [ ] **GREEN**: have `write_checkpoint` call `touch_last_session` internally
+- [x] **GREEN**: have `write_checkpoint` call `touch_last_session` internally
       after the reserved-fact upsert succeeds.
 - Depends on: 2.1, 1.2. Parallelizable: no.
 
 ### 2.3 `_reasoning_loop` return shape: carry last-tool-summary + exhausted flag
-- [ ] **RED**: unit test on `_reasoning_loop` (or its extracted outcome type)
+- [x] **RED**: unit test on `_reasoning_loop` (or its extracted outcome type)
       asserting a natural completion returns `exhausted=False` and a
       non-empty `last_tool_summary` when a tool was called during the loop.
-- [ ] **RED**: unit test asserting the `max_iterations`-exhaustion branch
+- [x] **RED**: unit test asserting the `max_iterations`-exhaustion branch
       returns `exhausted=True` with the best-known `last_tool_summary` at cutoff.
-- [ ] **GREEN**: introduce `ReasoningOutcome` (dataclass or small namedtuple:
+- [x] **GREEN**: introduce `ReasoningOutcome` (dataclass or small namedtuple:
       `response`, `last_tool_summary`, `exhausted`) as `_reasoning_loop`'s
       return type; update the natural-return branch (~line 197) and the
       exhaustion branch (~line 241) to populate it. Verify `stream_chat` (which
@@ -160,17 +160,17 @@ Spec coverage: "Structured Checkpoint Write". Depends on Phase 1 merged
   yes, with 2.1/2.2 (different code area — repository vs. agent/core.py).
 
 ### 2.4 `AgentOS.chat()`: single checkpoint write site (every turn + on exhaustion)
-- [ ] **RED**: `test_chat_writes_checkpoint_each_turn` — fake qwen + fake/spy
+- [x] **RED**: `test_chat_writes_checkpoint_each_turn` — fake qwen + fake/spy
       memory, run `chat()` once, assert `write_checkpoint` called exactly once
       with the turn's `goal`/`last_response`/`last_tool_result`/
       `iterations_exhausted=False`.
-- [ ] **RED**: extend/parametrize the same test (or add a sibling) for the
+- [x] **RED**: extend/parametrize the same test (or add a sibling) for the
       exhaustion path — force `_reasoning_loop` (or its stub) to return
       `exhausted=True`, assert `write_checkpoint` is still called exactly once
       with `iterations_exhausted=True`. This is the "single write site covers
       both paths" requirement from design.md section 4a — must NOT be two
       separate write call sites.
-- [ ] **GREEN**: in `chat()`, immediately after the assistant event is stored
+- [x] **GREEN**: in `chat()`, immediately after the assistant event is stored
       (design.md ~line 99 area), add the single `self.memory.write_checkpoint(...)`
       call using the `ReasoningOutcome` from 2.3.
 - Depends on: 2.1, 2.2, 2.3. Parallelizable: no.
