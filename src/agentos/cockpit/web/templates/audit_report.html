@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+
+{% block title %}Aki Cockpit - {{ key }} Audit{% endblock %}
+{% block header %}{{ key }} — Audit Report{% endblock %}
+
+{% block content %}
+<pre>{{ report_markdown }}</pre>
+
+<p><a href="/project/{{ key }}">Back to project detail</a> | <a href="/">Back to project list</a></p>
+{% endblock %}
