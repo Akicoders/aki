@@ -103,6 +103,44 @@ def test_build_cockpit_snapshot_reads_memory_summary(tmp_path):
     assert snapshot.project.last_memory_activity_at == datetime(2026, 7, 1, 12, 0, 0)
 
 
+def test_build_cockpit_snapshot_skips_upsert_when_record_open_false(tmp_path, monkeypatch):
+    project_root = tmp_path / "readonly-project"
+    project_root.mkdir()
+    (project_root / "pyproject.toml").write_text("[project]\nname='readonly-project'\n", encoding="utf-8")
+
+    project = resolve_project_ref(project_root)
+    assert project is not None
+
+    calls = []
+    monkeypatch.setattr(
+        "agentos.cli.cockpit.registry.upsert_project",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    build_cockpit_snapshot(project, record_open=False)
+
+    assert calls == []
+
+
+def test_build_cockpit_snapshot_upserts_by_default(tmp_path, monkeypatch):
+    project_root = tmp_path / "default-project"
+    project_root.mkdir()
+    (project_root / "pyproject.toml").write_text("[project]\nname='default-project'\n", encoding="utf-8")
+
+    project = resolve_project_ref(project_root)
+    assert project is not None
+
+    calls = []
+    monkeypatch.setattr(
+        "agentos.cli.cockpit.registry.upsert_project",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    build_cockpit_snapshot(project)
+
+    assert len(calls) == 1
+
+
 def test_root_command_opens_cockpit_overview_for_project(tmp_path, monkeypatch):
     project_root = tmp_path / "cockpit-project"
     project_root.mkdir()
@@ -123,6 +161,65 @@ def test_root_command_opens_cockpit_overview_for_project(tmp_path, monkeypatch):
     assert "SDD Status" in result.output
     assert project_root.name in result.output
     assert "Root:" in result.output
+
+
+def test_cockpit_web_flag_dispatches_to_run_server(tmp_path, monkeypatch):
+    project_root = tmp_path / "web-project"
+    project_root.mkdir()
+    (project_root / "pyproject.toml").write_text("[project]\nname='web-project'\n", encoding="utf-8")
+    monkeypatch.chdir(project_root)
+
+    calls = []
+    monkeypatch.setattr(
+        "agentos.cli.main.run_server",
+        lambda settings: calls.append(settings),
+    )
+
+    result = runner.invoke(app, ["cockpit", "--web", "--host", "127.0.0.1", "--port", "9001"])
+
+    assert result.exit_code == 0
+    assert len(calls) == 1
+    assert calls[0].host == "127.0.0.1"
+    assert calls[0].port == 9001
+    assert "Operational Cockpit" not in result.output
+
+
+def test_cockpit_web_flag_reports_port_conflict_cleanly(tmp_path, monkeypatch):
+    project_root = tmp_path / "conflict-project"
+    project_root.mkdir()
+    (project_root / "pyproject.toml").write_text("[project]\nname='conflict-project'\n", encoding="utf-8")
+    monkeypatch.chdir(project_root)
+
+    def _raise_address_in_use(settings):
+        raise OSError("[Errno 98] Address already in use")
+
+    monkeypatch.setattr("agentos.cli.main.run_server", _raise_address_in_use)
+
+    result = runner.invoke(app, ["cockpit", "--web", "--port", "9002"])
+
+    assert result.exit_code != 0
+    assert "9002" not in result.output or "port" in result.output.lower()
+    assert "--port" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_cockpit_without_web_flag_still_renders_terminal_cockpit(tmp_path, monkeypatch):
+    project_root = tmp_path / "terminal-project"
+    project_root.mkdir()
+    (project_root / "pyproject.toml").write_text("[project]\nname='terminal-project'\n", encoding="utf-8")
+    monkeypatch.chdir(project_root)
+
+    calls = []
+    monkeypatch.setattr(
+        "agentos.cli.main.run_server",
+        lambda settings: calls.append(settings),
+    )
+
+    result = runner.invoke(app, ["cockpit"])
+
+    assert result.exit_code == 0
+    assert calls == []
+    assert "Operational Cockpit" in result.output
 
 
 def test_root_command_falls_back_to_projects_browse(tmp_path, monkeypatch):
