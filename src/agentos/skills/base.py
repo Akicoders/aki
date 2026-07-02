@@ -6,8 +6,8 @@ import json
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from inspect import iscoroutinefunction, signature, getdoc
 from typing import Any, Callable, Optional
-from inspect import signature, getdoc
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -45,12 +45,16 @@ class Skill(ABC):
         self.functions = self._discover_functions()
 
     def _discover_functions(self) -> list[str]:
-        """Find all public async methods that don't start with _."""
+        """Find tool-eligible methods: async, public, and defined by the
+        subclass itself (not inherited helpers from the Skill base class).
+        This is what keeps internal helpers like get_openai_tool from
+        leaking into the model's tool list."""
+        base_attrs = set(dir(Skill))
         return [
             name for name in dir(self)
             if not name.startswith("_")
-            and callable(getattr(self, name))
-            and name not in {"get_function_schema", "execute"}
+            and name not in base_attrs
+            and iscoroutinefunction(getattr(self, name, None))
         ]
 
     def get_function_schema(self, fn_name: str) -> Optional[FunctionSchema]:
