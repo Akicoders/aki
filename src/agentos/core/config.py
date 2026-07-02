@@ -9,6 +9,8 @@ import yaml
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from agentos.core.project_breadcrumb import read_breadcrumb
+
 
 def _find_git_root(path: Path) -> Optional[Path]:
     current = path if path.is_dir() else path.parent
@@ -40,6 +42,10 @@ def _iter_env_search_roots(start: Optional[Path] = None) -> list[Path]:
     git_root = _find_git_root(cwd)
     if git_root is not None:
         add_root(git_root)
+
+    breadcrumb_root = read_breadcrumb()        # NEW: last-resort candidate
+    if breadcrumb_root is not None:            # NEW
+        add_root(breadcrumb_root)              # NEW
 
     return roots
 
