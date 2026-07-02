@@ -13,6 +13,9 @@ class FakeMemory:
     def assemble_context(self, **_kwargs) -> MemoryContext:
         return MemoryContext()
 
+    def write_checkpoint(self, *_args, **_kwargs) -> None:
+        pass
+
 
 class FakeQwenClient:
     async def chat(self, **_kwargs) -> ChatResponse:
