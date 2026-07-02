@@ -38,6 +38,13 @@ from agentos.cli.update import (
 from agentos.cockpit.navigation import run_cockpit_loop
 from agentos.cockpit import registry
 from agentos.cockpit.registry import list_projects
+
+try:
+    from agentos.cockpit.web.app import run_server
+    from agentos.cockpit.web.settings import WebServerSettings
+except ImportError:  # pragma: no cover - exercised only without `web` extras installed
+    run_server = None  # type: ignore[assignment]
+    WebServerSettings = None  # type: ignore[assignment,misc]
 from agentos.cockpit.audit.base import AuditContext, merge_findings, run_registered_passes
 from agentos.cockpit.audit.passes import PASS_REGISTRY
 from agentos.cockpit.audit.report import persist_audit
@@ -400,11 +407,30 @@ def cockpit_callback(
     interactive: bool = typer.Option(
         False, "--interactive", "-i", help="Open the interactive drill-down navigation loop"
     ),
+    web: bool = typer.Option(False, "--web", help="Serve a read-only cockpit over HTTP"),
+    host: str = typer.Option("127.0.0.1", "--host", help="Host for the web cockpit server"),
+    port: int = typer.Option(8420, "--port", help="Port for the web cockpit server"),
 ):
     """Open the cockpit overview for the resolved project."""
     resolved = resolve_project_ref(path)
     ctx.obj = {"project": resolved, "path": path}
     if ctx.invoked_subcommand is None:
+        if web:
+            if run_server is None or WebServerSettings is None:
+                console.print(
+                    "[red]The web cockpit requires the `web` extras. "
+                    "Install with `pip install '.[web]'` or `uv sync --extra web`.[/red]"
+                )
+                raise typer.Exit(1)
+            try:
+                run_server(WebServerSettings(host=host, port=port))
+            except OSError as exc:
+                console.print(
+                    f"[red]Could not start the web cockpit on {host}:{port} — {exc}. "
+                    f"Try a different port with --port.[/red]"
+                )
+                raise typer.Exit(1) from exc
+            return
         if resolved is None:
             render_projects_browse(
                 console,

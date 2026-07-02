@@ -200,14 +200,15 @@ def resolve_project_ref(start_path: Optional[Path] = None) -> ProjectRef | None:
     return None
 
 
-def build_cockpit_snapshot(project: ProjectRef) -> CockpitSnapshot:
+def build_cockpit_snapshot(project: ProjectRef, record_open: bool = True) -> CockpitSnapshot:
     generated_at = datetime.now()
     git_summary = _collect_git_summary(project.root_path)
     sdd_summary = _build_sdd_summary(project.root_path)
     memory_summary = _build_memory_summary(project)
     project.last_opened_at = generated_at
     project.last_memory_activity_at = memory_summary.last_activity_at
-    registry.upsert_project(project.key, project.root_path, source=project.source)
+    if record_open:
+        registry.upsert_project(project.key, project.root_path, source=project.source)
 
     health_checks = [
         _build_tests_health(project.root_path, generated_at),
