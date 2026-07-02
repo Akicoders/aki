@@ -172,6 +172,8 @@ class AgentOS:
         """Execute reasoning loop with tool calls."""
         max_iterations = self.config.max_iterations
         temperature = self.config.temperature
+        total_tool_calls = 0
+        last_tools_used: list[str] = []
 
         for iteration in range(max_iterations):
             logger.debug(f"Reasoning iteration {iteration + 1}/{max_iterations}")
@@ -207,6 +209,8 @@ class AgentOS:
                     skill_name, fn_name = "unknown", fn_name
 
                 logger.info(f"Tool call: {skill_name}.{fn_name}({fn_args})")
+                total_tool_calls += 1
+                last_tools_used.append(f"{skill_name}.{fn_name}")
 
                 result: SkillResult = await self.skills.execute(skill_name, fn_name, fn_args)
 
@@ -234,7 +238,25 @@ class AgentOS:
                 )
 
         # Max iterations reached
-        return "Se alcanzó el máximo de iteraciones. ¿Quieres que intente de otra forma?"
+        return self._format_exhaustion_message(max_iterations, total_tool_calls, last_tools_used)
+
+    @staticmethod
+    def _format_exhaustion_message(
+        max_iterations: int,
+        total_tool_calls: int,
+        last_tools_used: list[str],
+    ) -> str:
+        """Build an honest, actionable message when the reasoning loop is exhausted."""
+        recent = last_tools_used[-3:] if last_tools_used else []
+        recent_str = ", ".join(recent) if recent else "ninguna"
+
+        return (
+            f"Se alcanzó el límite de {max_iterations} iteraciones sin llegar a una respuesta final "
+            f"({total_tool_calls} llamadas a herramientas realizadas, últimas usadas: {recent_str}).\n"
+            "No voy a reintentar automáticamente de otra forma. Podés: "
+            "acotar el pedido, subir el límite de iteraciones (`agent.max_iterations` en config), "
+            "o pedirme que continúe desde donde quedó."
+        )
 
     async def stream_chat(
         self,
