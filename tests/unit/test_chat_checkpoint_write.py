@@ -18,6 +18,9 @@ class FakeMemory:
     def assemble_context(self, **_kwargs) -> MemoryContext:
         return MemoryContext()
 
+    def read_checkpoint(self, project, session_id):
+        return None
+
     def write_checkpoint(self, project, session_id, *, goal, last_response, last_tool_result, iterations_exhausted):
         self.checkpoint_calls.append(
             {

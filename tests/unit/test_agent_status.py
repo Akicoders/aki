@@ -16,6 +16,9 @@ class FakeMemory:
     def write_checkpoint(self, *_args, **_kwargs) -> None:
         pass
 
+    def read_checkpoint(self, project, session_id):
+        return None
+
 
 class FakeQwenClient:
     async def chat(self, **_kwargs) -> ChatResponse:

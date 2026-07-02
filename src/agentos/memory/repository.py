@@ -35,6 +35,36 @@ CHECKPOINT_FIELD_CHAR_CAP = 1000        # per free-text field cap before seriali
 CHECKPOINT_REHYDRATION_CHAR_CAP = 2000  # hard cap on rendered rehydration slot
 RESERVED_FACT_KEY_PREFIX = "session:"   # reserved-key namespace guard
 LAST_SESSION_KEY = "session:last"
+CHECKPOINT_KEY_TEMPLATE = RESERVED_FACT_KEY_PREFIX + "{session_id}:checkpoint"
+
+
+def render_checkpoint(checkpoint: dict, cap: int) -> str:
+    """Deterministic, bounded, human/model-readable rendering of a checkpoint dict.
+
+    Plain function, no class state, hard-capped to `cap` chars so it can be
+    injected into a reserved system-message slot without unbounded growth.
+    Truncation is deterministic: same input always yields the same output.
+    """
+    goal = checkpoint.get("goal") or ""
+    open_items = checkpoint.get("open_items") or []
+    last_tool_result = checkpoint.get("last_tool_result") or ""
+
+    lines = ["Checkpoint (previous session state):", f"- Goal: {goal}"]
+
+    if open_items:
+        lines.append("- Open items:")
+        lines.extend(f"  - {item}" for item in open_items)
+    else:
+        lines.append("- Open items: none")
+
+    if last_tool_result:
+        lines.append(f"- Last tool result: {last_tool_result}")
+
+    if checkpoint.get("iterations_exhausted"):
+        lines.append("- Note: previous turn hit the iteration limit before finishing.")
+
+    rendered = "\n".join(lines)
+    return rendered[:cap]
 
 
 class Embedder(Protocol):
@@ -323,13 +353,13 @@ class MemoryRepository:
             "iterations_exhausted": iterations_exhausted,
             "updated_at": datetime.utcnow().isoformat() + "Z",
         }
-        key = f"session:{session_id}:checkpoint"
+        key = CHECKPOINT_KEY_TEMPLATE.format(session_id=session_id)
         self._upsert_reserved_fact(key, f"project:{project}", json.dumps(payload))
         self.touch_last_session(project, session_id)
 
     def read_checkpoint(self, project: str, session_id: str) -> Optional[dict]:
         """Return the checkpoint dict for a session, or None if absent."""
-        fact = self.get_fact(f"session:{session_id}:checkpoint", f"project:{project}")
+        fact = self.get_fact(CHECKPOINT_KEY_TEMPLATE.format(session_id=session_id), f"project:{project}")
         if fact is None:
             return None
         data = json.loads(fact.value)
@@ -387,7 +417,11 @@ class MemoryRepository:
         """Build context for LLM: relevant facts + recent events + skills."""
         facts = self.search_facts(query, scope=f"project:{project}" if project else None, limit=15)
         if not facts and project:
-            facts = self.get_facts_by_scope(f"project:{project}", limit=15)
+            facts = [
+                fact
+                for fact in self.get_facts_by_scope(f"project:{project}", limit=15)
+                if not fact.key.startswith(RESERVED_FACT_KEY_PREFIX)
+            ]
 
         events = self.search_events(query, project=project, limit=10)
 
