@@ -28,6 +28,7 @@ from agentos.cli.cockpit import (
     resolve_project_ref,
 )
 from agentos.cli.mcp_hosts import _get_host_config_path, _get_mcp_snippet, _merge_mcp_config
+from agentos.mcp.project import detect_project
 from agentos.cli.update import (
     UpdateError,
     locate_installed_source_dir,
@@ -100,11 +101,12 @@ def callback(
 @app.command()
 def chat(
     message: str = typer.Argument(..., help="Message to send"),
-    project: str = typer.Option("default", "--project", "-p", help="Project name"),
+    project: Optional[str] = typer.Option(None, "--project", "-p", help="Project name"),
     session: Optional[str] = typer.Option(None, "--session", "-s", help="Session ID"),
     stream: bool = typer.Option(False, "--stream", help="Stream response"),
 ):
     """Chat with Aki."""
+    project = detect_project(project)
     with console.status(_format_status("Loading memory engine")):
         agent = _get_agent()
 
@@ -141,10 +143,11 @@ def chat(
 
 @app.command()
 def interactive(
-    project: str = typer.Option("default", "--project", "-p", help="Project name"),
+    project: Optional[str] = typer.Option(None, "--project", "-p", help="Project name"),
     session: Optional[str] = typer.Option(None, "--session", "-s", help="Session ID"),
 ):
     """Start interactive chat session."""
+    project = detect_project(project)
     with console.status(_format_status("Loading memory engine")):
         agent = _get_agent()
     session_id = session or f"sess_{__import__('uuid').uuid4().hex[:8]}"
@@ -708,10 +711,11 @@ async def _async_interactive(agent, project, session_id):
 @app.command()
 def remember(
     content: str = typer.Argument(..., help="Content to remember"),
-    project: str = typer.Option("default", "--project", "-p", help="Project name"),
+    project: Optional[str] = typer.Option(None, "--project", "-p", help="Project name"),
     type: str = typer.Option("user_preference", "--type", "-t", help="Event type"),
 ):
     """Explicitly store a memory."""
+    project = detect_project(project)
     agent = _get_agent()
 
     async def run():
@@ -724,10 +728,11 @@ def remember(
 @app.command()
 def recall(
     query: str = typer.Argument(..., help="Search query"),
-    project: str = typer.Option("default", "--project", "-p", help="Project name"),
+    project: Optional[str] = typer.Option(None, "--project", "-p", help="Project name"),
     limit: int = typer.Option(10, "--limit", "-l", help="Max results"),
 ):
     """Search memory."""
+    project = detect_project(project)
     agent = _get_agent()
 
     async def run():
@@ -739,9 +744,10 @@ def recall(
 
 @app.command()
 def facts(
-    project: str = typer.Option("default", "--project", "-p", help="Project name"),
+    project: Optional[str] = typer.Option(None, "--project", "-p", help="Project name"),
 ):
     """List all facts for a project."""
+    project = detect_project(project)
     agent = _get_agent()
 
     async def run():
@@ -768,10 +774,11 @@ def facts(
 def set_fact(
     key: str = typer.Argument(..., help="Fact key"),
     value: str = typer.Argument(..., help="Fact value"),
-    project: str = typer.Option("default", "--project", "-p", help="Project name"),
+    project: Optional[str] = typer.Option(None, "--project", "-p", help="Project name"),
     confidence: float = typer.Option(1.0, "--confidence", "-c", help="Confidence (0-1)"),
 ):
     """Set a fact manually."""
+    project = detect_project(project)
     agent = _get_agent()
 
     async def run():
