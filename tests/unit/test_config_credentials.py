@@ -67,6 +67,26 @@ def test_get_config_prefers_qwen_key_from_dotenv(tmp_path, monkeypatch):
     assert config.qwen.api_key == "sk-dotenv-qwen"
 
 
+def test_get_config_finds_dotenv_from_nested_subdirectory(tmp_path, monkeypatch):
+    """Regression: running aki from a subdirectory of the repo (not the exact
+    root) must still discover the repo's .env, not just the process cwd's own
+    .env."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    (repo / ".env").write_text("QWEN_API_KEY=sk-repo-root-dotenv\n", encoding="utf-8")
+
+    nested = repo / "src" / "deep"
+    nested.mkdir(parents=True)
+    monkeypatch.chdir(nested)
+    monkeypatch.delenv("QWEN_API_KEY", raising=False)
+    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+
+    config = get_config()
+
+    assert config.qwen.api_key == "sk-repo-root-dotenv"
+
+
 def test_config_from_yaml_loads_dotenv_for_interpolation(tmp_path, monkeypatch):
     project_root = tmp_path / "project"
     project_root.mkdir()

@@ -10,6 +10,14 @@ from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _find_git_root(path: Path) -> Optional[Path]:
+    current = path if path.is_dir() else path.parent
+    for candidate in (current, *current.parents):
+        if (candidate / ".git").exists():
+            return candidate
+    return None
+
+
 def _iter_env_search_roots(start: Optional[Path] = None) -> list[Path]:
     roots: list[Path] = []
     seen: set[Path] = set()
@@ -28,6 +36,10 @@ def _iter_env_search_roots(start: Optional[Path] = None) -> list[Path]:
     cwd = Path.cwd()
     for candidate in (cwd, *cwd.parents):
         add_root(candidate)
+
+    git_root = _find_git_root(cwd)
+    if git_root is not None:
+        add_root(git_root)
 
     return roots
 
