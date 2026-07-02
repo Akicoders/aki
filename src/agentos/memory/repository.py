@@ -29,6 +29,12 @@ from .models import (
 
 _MODEL_LOGGERS = ("huggingface_hub", "sentence_transformers", "transformers")
 
+# --- Deferred config (see follow-up: wire into AgentConfig/MemoryConfig) ---
+CHECKPOINT_FIELD_CHAR_CAP = 1000        # per free-text field cap before serialize
+CHECKPOINT_REHYDRATION_CHAR_CAP = 2000  # hard cap on rendered rehydration slot
+RESERVED_FACT_KEY_PREFIX = "session:"   # reserved-key namespace guard
+LAST_SESSION_KEY = "session:last"
+
 
 class Embedder(Protocol):
     """Text embedding provider used by the memory repository."""
@@ -261,6 +267,33 @@ class MemoryRepository:
             stmt = stmt.order_by(MemoryFactModel.confidence.desc()).limit(limit)
             models = session.execute(stmt).scalars().all()
         return [MemoryFact.from_model(m) for m in models]
+
+    # --- Reserved-key facts (session pointer / checkpoint) ---
+
+    def _upsert_reserved_fact(self, key: str, scope: str, value: str) -> MemoryFact:
+        """Upsert a fact by (key, scope) instead of `upsert_fact`'s id-keyed semantics.
+
+        `upsert_fact` looks up rows by `fact.id` (primary key). A freshly
+        constructed `MemoryFact` gets a random id, so calling `upsert_fact`
+        directly on a new instance would INSERT a duplicate row every time
+        instead of updating in place. This helper reads the existing fact by
+        (key, scope) first and reuses its id when present.
+        """
+        existing = self.get_fact(key, scope)
+        kwargs = {"key": key, "scope": scope, "value": value, "confidence": 1.0}
+        if existing is not None:
+            kwargs["id"] = existing.id
+        fact = MemoryFact(**kwargs)
+        return self.upsert_fact(fact)
+
+    def touch_last_session(self, project: str, session_id: str) -> None:
+        """Persist the most recently used session_id for a project."""
+        self._upsert_reserved_fact(LAST_SESSION_KEY, f"project:{project}", session_id)
+
+    def get_last_session(self, project: str) -> Optional[str]:
+        """Return the last-used session_id for a project, if any."""
+        fact = self.get_fact(LAST_SESSION_KEY, f"project:{project}")
+        return fact.value if fact else None
 
     def increment_fact_access(self, fact_id: str) -> None:
         with self.db.session() as session:

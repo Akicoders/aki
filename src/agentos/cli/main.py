@@ -82,6 +82,42 @@ def _get_agent():
     return get_agent()
 
 
+def _memory():
+    """Return a memory accessor usable for session resolution (last_session reads)."""
+    from agentos.memory.repository import MemoryRepository
+
+    return MemoryRepository()
+
+
+def _resolve_session_id(
+    project: str,
+    memory,
+    session: Optional[str],
+    new_session: bool,
+) -> str:
+    """Resolve the session_id per the design.md section 5 resolution order.
+
+    1. Explicit `session` wins unconditionally.
+    2. `new_session=True` mints a fresh id, ignoring any stored pointer.
+    3. Otherwise, resume the durable `session:last` fact if present.
+    4. Otherwise, mint a fresh id.
+
+    NOTE: this CLI-side helper only READS `session:last` (via
+    `MemoryRepository.get_last_session`). The WRITE authority lives in
+    `AgentOS.chat()` (Phase 2 / PR #2), which upserts `session:last` on every
+    turn via `touch_last_session`. Phase 1 ships read-only resolution here so
+    the flag/escape-hatch behavior is fully correct even before the write
+    path exists.
+    """
+    if session:
+        return session
+    if not new_session:
+        last = memory.get_last_session(project)
+        if last:
+            return last
+    return f"sess_{__import__('uuid').uuid4().hex[:8]}"
+
+
 @app.callback(invoke_without_command=True)
 def callback(
     ctx: typer.Context,
@@ -104,10 +140,14 @@ def chat(
     message: str = typer.Argument(..., help="Message to send"),
     project: Optional[str] = typer.Option(None, "--project", "-p", help="Project name"),
     session: Optional[str] = typer.Option(None, "--session", "-s", help="Session ID"),
+    new_session: bool = typer.Option(
+        False, "--new-session", help="Start a fresh session, bypassing auto-resume"
+    ),
     stream: bool = typer.Option(False, "--stream", help="Stream response"),
 ):
     """Chat with Aki."""
     project = detect_project(project)
+    session = _resolve_session_id(project, _memory(), session, new_session)
     with console.status(_format_status("Loading memory engine")):
         agent = _get_agent()
 
@@ -146,12 +186,15 @@ def chat(
 def interactive(
     project: Optional[str] = typer.Option(None, "--project", "-p", help="Project name"),
     session: Optional[str] = typer.Option(None, "--session", "-s", help="Session ID"),
+    new_session: bool = typer.Option(
+        False, "--new-session", help="Start a fresh session, bypassing auto-resume"
+    ),
 ):
     """Start interactive chat session."""
     project = detect_project(project)
     with console.status(_format_status("Loading memory engine")):
         agent = _get_agent()
-    session_id = session or f"sess_{__import__('uuid').uuid4().hex[:8]}"
+    session_id = _resolve_session_id(project, _memory(), session, new_session)
 
     _print_interactive_header(agent, project, session_id)
 
