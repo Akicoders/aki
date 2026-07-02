@@ -96,3 +96,164 @@ def test_no_route_accepts_mutation_verbs():
             assert response.status_code in (404, 405), (
                 f"{method} {path} unexpectedly returned {response.status_code}"
             )
+
+
+def test_project_detail_returns_404_for_unknown_project(monkeypatch):
+    monkeypatch.setattr(
+        "agentos.cockpit.web.routes.registry.list_projects",
+        lambda: [],
+    )
+    client = TestClient(create_app())
+
+    response = client.get("/project/does-not-exist")
+
+    assert response.status_code == 404
+    assert "not found" in response.text.lower()
+
+
+def test_project_detail_returns_panel_data_for_known_project(monkeypatch, tmp_path):
+    record = ProjectRefRecord(
+        root_path=str(tmp_path),
+        key="demo-project",
+        source="marker",
+        last_opened_at=datetime(2026, 7, 1, 10, 0, 0),
+    )
+    monkeypatch.setattr(
+        "agentos.cockpit.web.routes.registry.list_projects",
+        lambda: [record],
+    )
+
+    def _fake_snapshot(project, record_open=True):
+        assert record_open is False
+        from agentos.cli.cockpit import (
+            ActionItem,
+            CockpitSnapshot,
+            GitSummary,
+            MemorySummary,
+            SDDSummary,
+        )
+
+        return CockpitSnapshot(
+            project=project,
+            generated_at=datetime(2026, 7, 1, 10, 0, 0),
+            action_items=[ActionItem("warning", "Fix env", "detail", "aki doctor")],
+            health_checks=[],
+            memory_summary=MemorySummary(),
+            sdd_summary=SDDSummary(
+                has_sdd=True,
+                sdd_dir=".sdd",
+                found_artifacts=["proposal.md"],
+                missing_artifacts=[],
+                latest_artifact="proposal.md",
+                latest_artifact_updated_at=None,
+                latest_preview=None,
+                next_step="All core SDD artifacts are present.",
+            ),
+            git_summary=GitSummary(branch="main", is_dirty=False),
+        )
+
+    monkeypatch.setattr("agentos.cockpit.web.routes.build_cockpit_snapshot", _fake_snapshot)
+    client = TestClient(create_app())
+
+    response = client.get("/project/demo-project")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert "demo-project" in response.text
+    assert "Action Required" in response.text
+    assert "Project Health" in response.text
+    assert "Memory" in response.text
+    assert "SDD Status" in response.text
+
+
+def test_audit_report_returns_404_for_unknown_project(monkeypatch):
+    monkeypatch.setattr(
+        "agentos.cockpit.web.routes.registry.list_projects",
+        lambda: [],
+    )
+    client = TestClient(create_app())
+
+    response = client.get("/project/does-not-exist/audit")
+
+    assert response.status_code == 404
+
+
+def test_audit_report_renders_findings_without_side_effects(monkeypatch, tmp_path):
+    from agentos.cockpit.audit.base import AuditFinding
+
+    record = ProjectRefRecord(
+        root_path=str(tmp_path),
+        key="demo-project",
+        source="marker",
+        last_opened_at=datetime(2026, 7, 1, 10, 0, 0),
+    )
+    monkeypatch.setattr(
+        "agentos.cockpit.web.routes.registry.list_projects",
+        lambda: [record],
+    )
+
+    findings = [
+        AuditFinding(
+            priority="P1",
+            category="security",
+            title="Example finding",
+            evidence="Some evidence",
+            recommendation="Fix it",
+        )
+    ]
+
+    def _fake_run_registered_passes(ctx, passes):
+        return [("stub-pass", findings)]
+
+    persist_calls = []
+    autofix_calls = []
+
+    monkeypatch.setattr(
+        "agentos.cockpit.web.routes.run_registered_passes",
+        _fake_run_registered_passes,
+    )
+    monkeypatch.setattr(
+        "agentos.cockpit.web.routes.persist_audit",
+        lambda *a, **k: persist_calls.append((a, k)),
+    )
+
+    client = TestClient(create_app())
+
+    response = client.get("/project/demo-project/audit")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert "Example finding" in response.text
+    assert persist_calls == []
+    assert autofix_calls == []
+
+
+def test_audit_report_unreachable_via_autofix(monkeypatch):
+    app = create_app()
+    for route in app.routes:
+        path = getattr(route, "path", None)
+        endpoint = getattr(route, "endpoint", None)
+        if endpoint is None:
+            continue
+        assert "autofix" not in endpoint.__name__.lower()
+        assert path is None or "autofix" not in path.lower()
+
+
+def test_root_lists_registered_projects_as_html(monkeypatch):
+    record = ProjectRefRecord(
+        root_path="/tmp/demo-project",
+        key="demo-project",
+        source="git",
+        last_opened_at=datetime(2026, 7, 1, 10, 0, 0),
+    )
+    monkeypatch.setattr(
+        "agentos.cockpit.web.routes.registry.list_projects",
+        lambda: [record],
+    )
+    client = TestClient(create_app())
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert "demo-project" in response.text
