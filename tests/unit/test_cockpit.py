@@ -141,6 +141,48 @@ def test_build_cockpit_snapshot_upserts_by_default(tmp_path, monkeypatch):
     assert len(calls) == 1
 
 
+def test_build_cockpit_snapshot_writes_breadcrumb_when_record_open(tmp_path, monkeypatch):
+    project_root = tmp_path / "breadcrumb-project"
+    project_root.mkdir()
+    (project_root / "pyproject.toml").write_text("[project]\nname='breadcrumb-project'\n", encoding="utf-8")
+
+    project = resolve_project_ref(project_root)
+    assert project is not None
+
+    monkeypatch.setattr("agentos.cli.cockpit.registry.upsert_project", lambda *args, **kwargs: None)
+
+    calls = []
+    monkeypatch.setattr(
+        "agentos.cli.cockpit.write_breadcrumb",
+        lambda root_path: calls.append(root_path),
+    )
+
+    build_cockpit_snapshot(project, record_open=True)
+
+    assert calls == [project.root_path]
+
+
+def test_build_cockpit_snapshot_skips_breadcrumb_when_record_open_false(tmp_path, monkeypatch):
+    project_root = tmp_path / "no-breadcrumb-project"
+    project_root.mkdir()
+    (project_root / "pyproject.toml").write_text("[project]\nname='no-breadcrumb-project'\n", encoding="utf-8")
+
+    project = resolve_project_ref(project_root)
+    assert project is not None
+
+    monkeypatch.setattr("agentos.cli.cockpit.registry.upsert_project", lambda *args, **kwargs: None)
+
+    calls = []
+    monkeypatch.setattr(
+        "agentos.cli.cockpit.write_breadcrumb",
+        lambda root_path: calls.append(root_path),
+    )
+
+    build_cockpit_snapshot(project, record_open=False)
+
+    assert calls == []
+
+
 def test_root_command_opens_cockpit_overview_for_project(tmp_path, monkeypatch):
     project_root = tmp_path / "cockpit-project"
     project_root.mkdir()

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from agentos.core.project_breadcrumb import write_breadcrumb
+
 _USE_PROCESS_CWD = object()
 
 
@@ -27,6 +29,7 @@ def detect_project(
     current = cwd.resolve()
     git_root = _find_git_root(current)
     if git_root and git_root.name:
+        write_breadcrumb(git_root)
         return git_root.name
 
     if current.name:

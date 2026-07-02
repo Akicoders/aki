@@ -22,6 +22,7 @@ from sqlalchemy import select
 from agentos.cli.mcp_hosts import _get_host_config_path, _get_mcp_snippet
 from agentos.cockpit import registry
 from agentos.core.config import get_config
+from agentos.core.project_breadcrumb import write_breadcrumb
 from agentos.memory.database import Database
 from agentos.memory.models import EventType, MemoryEventModel, MemoryFactModel
 from agentos.sdd.detector import SDD_FILES, detect_sdd_artifacts, load_sdd_artifact
@@ -209,6 +210,7 @@ def build_cockpit_snapshot(project: ProjectRef, record_open: bool = True) -> Coc
     project.last_memory_activity_at = memory_summary.last_activity_at
     if record_open:
         registry.upsert_project(project.key, project.root_path, source=project.source)
+        write_breadcrumb(project.root_path)
 
     health_checks = [
         _build_tests_health(project.root_path, generated_at),
