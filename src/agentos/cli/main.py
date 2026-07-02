@@ -6,6 +6,7 @@ import asyncio
 import json
 import shutil
 import sys
+from contextlib import nullcontext
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -588,16 +589,36 @@ def _resolve_audit_project_ref(project: str):
 @app.command("audit")
 def audit_project(
     project: str = typer.Argument(..., help="Project key (from the registry) or filesystem path to audit"),
+    deep: bool = typer.Option(
+        False, "--deep", help="Also run a model-backed deep audit pass (uses tokens, can be slow)"
+    ),
 ):
-    """Run the read-only audit engine and generate a durable report (docs/audits/...)."""
+    """Run the read-only audit engine and generate a durable report (docs/audits/...).
+
+    By default this is fast, local, and deterministic -- no model calls. Pass --deep
+    to additionally run a model-backed pass for architectural/semantic findings that
+    static checks can't catch. --deep uses API tokens and may take noticeably longer.
+    """
     project_ref = _resolve_audit_project_ref(project)
     if project_ref is None:
         console.print(f"[red]project resolution failure: could not resolve project '{project}'[/red]")
         raise typer.Exit(1)
 
+    passes = list(PASS_REGISTRY)
+    if deep:
+        from agentos.cockpit.audit.deep import DeepAuditPass
+
+        console.print(
+            "[yellow]--deep uses the Qwen model (consumes API tokens) and may be noticeably "
+            "slower than the standard audit.[/yellow]"
+        )
+        passes.append(DeepAuditPass())
+
     generated_at = datetime.now()
     ctx = AuditContext(project=project_ref, root_path=project_ref.root_path, generated_at=generated_at)
-    pass_results = run_registered_passes(ctx, PASS_REGISTRY)
+    status_cm = console.status(_format_status("Running deep audit pass...")) if deep else nullcontext()
+    with status_cm:
+        pass_results = run_registered_passes(ctx, passes)
     findings = merge_findings(pass_results)
 
     outcome = persist_audit(project_ref.root_path, project_ref.key, generated_at, findings)

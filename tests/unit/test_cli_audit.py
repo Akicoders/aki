@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from typer.testing import CliRunner
 
 from agentos.cli.main import app
+from agentos.cockpit.audit import deep as deep_module
 from agentos.cockpit.audit import report as report_module
 from agentos.skills.base import SkillResult
 from agentos.skills.code_intel import CodeIntelSkill
@@ -51,6 +53,39 @@ def test_audit_command_unresolvable_project_exits_nonzero(tmp_path, monkeypatch)
     result = runner.invoke(app, ["audit", str(tmp_path / "does-not-exist")])
     assert result.exit_code != 0
     assert "project resolution failure" in result.output
+
+
+def test_audit_command_default_never_calls_the_model(tmp_path, monkeypatch):
+    """Regression: plain 'aki audit' must stay fast/local/deterministic -- no model calls."""
+    project_root = _make_project(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    called = MagicMock()
+    monkeypatch.setattr(
+        deep_module.DeepAuditPass, "run", lambda self, ctx: called() or []
+    )
+
+    result = runner.invoke(app, ["audit", str(project_root)])
+
+    assert result.exit_code == 0, result.output
+    called.assert_not_called()
+
+
+def test_audit_command_deep_flag_warns_and_runs_model_pass(tmp_path, monkeypatch):
+    project_root = _make_project(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    qwen = AsyncMock()
+    response = MagicMock()
+    response.content = "[]"
+    qwen.chat.return_value = response
+    monkeypatch.setattr(deep_module, "get_qwen_client", lambda: qwen)
+
+    result = runner.invoke(app, ["audit", str(project_root), "--deep"])
+
+    assert result.exit_code == 0, result.output
+    assert "tokens" in result.output.lower()
+    qwen.chat.assert_awaited_once()
 
 
 def test_audit_command_engram_failure_exits_nonzero_but_keeps_markdown(tmp_path, monkeypatch):
