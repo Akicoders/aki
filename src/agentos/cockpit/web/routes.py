@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from pathlib import Path
 
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+
+from agentos.cli.cockpit import ProjectRef, build_cockpit_snapshot
 from agentos.cockpit import registry
 from agentos.memory.models import ProjectRefRecord
 
 router = APIRouter()
+
+_TEMPLATES_DIR = Path(__file__).parent / "templates"
+templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
 
 @router.get("/health")
@@ -20,3 +28,35 @@ def health() -> dict:
 def list_projects() -> list[ProjectRefRecord]:
     """Return the registered projects, unmodified from the domain layer."""
     return registry.list_projects()
+
+
+@router.get("/", response_class=HTMLResponse)
+def project_list_page(request: Request) -> HTMLResponse:
+    """Render the registered projects as a server-side HTML page."""
+    projects = registry.list_projects()
+    return templates.TemplateResponse(
+        request=request,
+        name="project_list.html",
+        context={"projects": projects},
+    )
+
+
+@router.get("/project/{key}", response_class=HTMLResponse)
+def project_detail_page(request: Request, key: str) -> HTMLResponse:
+    """Render the 4-panel cockpit drill-down for a single registered project."""
+    record = next((entry for entry in registry.list_projects() if entry.key == key), None)
+    if record is None:
+        return templates.TemplateResponse(
+            request=request,
+            name="not_found.html",
+            context={"key": key},
+            status_code=404,
+        )
+
+    project = ProjectRef(key=record.key, root_path=Path(record.root_path), source=record.source)
+    snapshot = build_cockpit_snapshot(project, record_open=False)
+    return templates.TemplateResponse(
+        request=request,
+        name="project_detail.html",
+        context={"snapshot": snapshot},
+    )

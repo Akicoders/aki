@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Aki Cockpit - Projects{% endblock %}
+{% block header %}Registered Projects{% endblock %}
+
+{% block content %}
+{% if projects %}
+<table>
+  <thead>
+    <tr><th>Key</th><th>Source</th><th>Root Path</th><th>Last Opened</th></tr>
+  </thead>
+  <tbody>
+    {% for project in projects %}
+    <tr>
+      <td><a href="/project/{{ project.key }}">{{ project.key }}</a></td>
+      <td>{{ project.source }}</td>
+      <td>{{ project.root_path }}</td>
+      <td>{{ project.last_opened_at or "unknown" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No projects are registered yet.</p>
+{% endif %}
+{% endblock %}
