@@ -18,6 +18,7 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.table import Table
 
+from agentos.agents import ProfileNotFoundError
 from agentos.cli.cockpit import (
     _build_sdd_summary,
     _collect_git_summary,
@@ -59,6 +60,7 @@ from agentos.sdd.init import init_sdd_project
 
 if TYPE_CHECKING:
     from agentos.agent.core import AgentOS
+    from agentos.agents import AgentProfile
 
 app = typer.Typer(
     name="aki",
@@ -80,6 +82,28 @@ def _get_agent():
     from agentos.agent.core import get_agent
 
     return get_agent()
+
+
+def _resolve_cli_profile(agent: "AgentOS", profile_id: Optional[str]) -> "AgentProfile | None":
+    """Resolve a CLI-selected profile before starting an agent turn."""
+    if profile_id is None:
+        return None
+    try:
+        return agent.agent_registry.resolve(profile_id)
+    except ProfileNotFoundError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from exc
+
+
+def _profile_summary(profile: "AgentProfile | None") -> str:
+    if profile is None:
+        return "[dim]default[/dim]"
+    return f"[cyan]{profile.name}[/cyan] ([dim]{profile.id}[/dim])"
+
+
+def _print_profile_header(profile: "AgentProfile | None") -> None:
+    if profile is not None:
+        console.print(f"[bold]Agent profile:[/bold] {_profile_summary(profile)}")
 
 
 def _memory():
@@ -140,6 +164,7 @@ def chat(
     message: str = typer.Argument(..., help="Message to send"),
     project: Optional[str] = typer.Option(None, "--project", "-p", help="Project name"),
     session: Optional[str] = typer.Option(None, "--session", "-s", help="Session ID"),
+    profile: Optional[str] = typer.Option(None, "--profile", help="Specialized agent profile id"),
     new_session: bool = typer.Option(
         False, "--new-session", help="Start a fresh session, bypassing auto-resume"
     ),
@@ -150,6 +175,8 @@ def chat(
     session = _resolve_session_id(project, _memory(), session, new_session)
     with console.status(_format_status("Loading memory engine")):
         agent = _get_agent()
+    selected_profile = _resolve_cli_profile(agent, profile)
+    _print_profile_header(selected_profile)
 
     async def run():
         response = ""
@@ -164,6 +191,7 @@ def chat(
                     project,
                     session,
                     status_callback=update_status,
+                    profile_id=profile,
                 ):
                     console.print(chunk, end="")
             else:
@@ -172,6 +200,7 @@ def chat(
                     project,
                     session,
                     status_callback=update_status,
+                    profile_id=profile,
                 )
 
         if stream:
@@ -186,6 +215,7 @@ def chat(
 def interactive(
     project: Optional[str] = typer.Option(None, "--project", "-p", help="Project name"),
     session: Optional[str] = typer.Option(None, "--session", "-s", help="Session ID"),
+    profile: Optional[str] = typer.Option(None, "--profile", help="Specialized agent profile id"),
     new_session: bool = typer.Option(
         False, "--new-session", help="Start a fresh session, bypassing auto-resume"
     ),
@@ -194,9 +224,10 @@ def interactive(
     project = detect_project(project)
     with console.status(_format_status("Loading memory engine")):
         agent = _get_agent()
+    selected_profile = _resolve_cli_profile(agent, profile)
     session_id = _resolve_session_id(project, _memory(), session, new_session)
 
-    _print_interactive_header(agent, project, session_id)
+    _print_interactive_header(agent, project, session_id, selected_profile)
 
     sdd_status = detect_sdd_artifacts()
     if not sdd_status.has_sdd:
@@ -207,7 +238,7 @@ def interactive(
             border_style="yellow",
         ))
 
-    asyncio.run(_async_interactive(agent, project, session_id))
+    asyncio.run(_async_interactive(agent, project, session_id, profile_id=profile))
 
 
 @app.command("mcp")
@@ -675,10 +706,16 @@ def audit_project(
     console.print(f"[green]✓[/green] Audit report written to {outcome.report_path}")
 
 
-def _print_interactive_header(agent: "AgentOS", project: str, session_id: str):
+def _print_interactive_header(
+    agent: "AgentOS",
+    project: str,
+    session_id: str,
+    profile: "AgentProfile | None" = None,
+):
     console.print(Panel.fit(
         f"[bold cyan]Aki Interactive[/bold cyan]\n"
         f"Project: [yellow]{project}[/yellow] | Session: [dim]{session_id}[/dim]\n"
+        f"Profile: {_profile_summary(profile)}\n"
         f"Type 'exit' or 'quit' to leave, '/help' for commands",
         border_style="cyan",
     ))
@@ -748,7 +785,7 @@ def sdd_init(
     console.print("  4. Break work into tasks in [cyan]docs/sdd/tasks.md[/cyan]")
 
 
-async def _async_interactive(agent, project, session_id):
+async def _async_interactive(agent, project, session_id, profile_id: Optional[str] = None):
     while True:
         try:
             user_input = Prompt.ask("[bold green]You[/bold green]")
@@ -756,13 +793,23 @@ async def _async_interactive(agent, project, session_id):
                 console.print("[dim]Goodbye![/dim]")
                 break
             if user_input.lower() in ("/help", "help"):
-                _show_help()
+                _show_help(agent, project, session_id)
                 continue
             if user_input.startswith("/"):
                 await _handle_command(user_input, agent, project, session_id)
                 continue
 
-            response = await agent.chat(user_input, project, session_id)
+            with console.status(_format_status("Starting turn")) as status:
+                def update_status(message: str) -> None:
+                    status.update(_format_status(message))
+
+                response = await agent.chat(
+                    user_input,
+                    project,
+                    session_id,
+                    status_callback=update_status,
+                    profile_id=profile_id,
+                )
             console.print(Markdown(f"**Agent:** {response}"))
 
         except KeyboardInterrupt:
@@ -882,6 +929,39 @@ def skills(
     console.print(table)
 
 
+@app.command("agents")
+def agents():
+    """List configured specialized agent profiles."""
+    agent = _get_agent()
+    profiles = agent.agent_registry.list_profiles()
+
+    if not profiles:
+        console.print("[dim]No specialized agent profiles configured[/dim]")
+        return
+
+    table = Table(title="Agent Profiles")
+    table.add_column("ID", style="cyan")
+    table.add_column("Name", style="white")
+    table.add_column("Role", style="green")
+    table.add_column("Tools", style="yellow")
+    table.add_column("Memory", style="magenta")
+    table.add_column("Delegation", style="dim")
+
+    for profile in profiles:
+        tools = "deny-all" if profile.tools.deny_all else ", ".join(profile.tools.allowed)
+        delegation = "metadata only" if profile.delegation.enabled else "off"
+        table.add_row(
+            profile.id,
+            profile.name,
+            profile.role,
+            tools,
+            profile.memory.scope,
+            delegation,
+        )
+
+    console.print(table)
+
+
 @app.command()
 def config_show():
     """Show current configuration."""
@@ -900,13 +980,28 @@ skills:
 ```"""))
 
 
-def _show_help():
-    console.print(Panel("""
+def _show_help(agent: "AgentOS", project: str, session_id: str):
+    try:
+        checkpoint = agent.memory.read_checkpoint(project, session_id)
+    except Exception:
+        checkpoint = None
+
+    if checkpoint and checkpoint.get("goal"):
+        state = (
+            f"[green]Resuming[/green] session [cyan]{session_id}[/cyan]\n"
+            f"Last goal: {checkpoint['goal'][:80]}"
+        )
+    else:
+        state = f"[yellow]New[/yellow] session [cyan]{session_id}[/cyan] — no history yet"
+
+    console.print(Panel(f"""{state}
+
 [bold]Commands:[/bold]
   /help           - Show this help
   /memory         - Show recent memory
   /facts          - Show facts for current project
   /skills         - List skills
+  /sessions       - List past sessions for this project
   /sdd            - Show SDD artifact status
   /clear          - Clear screen
   exit/quit       - Exit
@@ -920,6 +1015,8 @@ async def _handle_command(cmd: str, agent: "AgentOS", project: str, session_id: 
         await _show_facts(agent, project)
     elif cmd == "/skills":
         await _show_skills()
+    elif cmd == "/sessions":
+        await _show_sessions(agent, project)
     elif cmd == "/sdd":
         _show_sdd_status()
     elif cmd == "/clear":
@@ -944,6 +1041,21 @@ async def _show_facts(agent: "AgentOS", project: str):
     table.add_column("Confidence", style="green")
     for f in facts:
         table.add_row(f.key, f.value[:80], f"{f.confidence:.2f}")
+    console.print(table)
+
+
+async def _show_sessions(agent: "AgentOS", project: str):
+    sessions = agent.memory.list_sessions(project)
+    if not sessions:
+        console.print("[dim]No sessions yet for this project[/dim]")
+        return
+    table = Table(title=f"Sessions: {project}")
+    table.add_column("Session", style="cyan")
+    table.add_column("Goal", style="white")
+    table.add_column("Updated", style="green")
+    for s in sessions:
+        label = s.goal.strip()[:60] if s.goal.strip() else f"(no goal) {s.session_id}"
+        table.add_row(s.session_id, label, s.updated_at.strftime("%Y-%m-%d %H:%M"))
     console.print(table)
 
 

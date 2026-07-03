@@ -36,6 +36,7 @@ class Skill(ABC):
     functions: list[str] = Field(default_factory=list)
     enabled: bool = True
     config: dict[str, Any] = Field(default_factory=dict)
+    destructive_functions: frozenset[str] = frozenset()  # default: nothing destructive
 
     def __init__(self, config: Optional[dict] = None):
         self.config = {}
@@ -106,6 +107,10 @@ class Skill(ABC):
             return {"type": "string"}
         return {"type": "string"}
 
+    def is_destructive(self, fn_name: str) -> bool:
+        """Whether calling `fn_name` on this skill is destructive."""
+        return fn_name in self.destructive_functions
+
     def get_openai_tool(self, fn_name: str) -> Optional[dict[str, Any]]:
         """Get OpenAI-compatible tool definition."""
         schema = self.get_function_schema(fn_name)
@@ -117,6 +122,7 @@ class Skill(ABC):
                 "name": schema.name.replace(".", "_"),
                 "description": schema.description,
                 "parameters": schema.parameters,
+                "destructive": self.is_destructive(fn_name),
             },
         }
 
@@ -150,6 +156,11 @@ class SkillRegistry:
 
     def get(self, name: str) -> Optional[Skill]:
         return self._skills.get(name)
+
+    def is_destructive(self, skill_name: str, fn_name: str) -> bool:
+        """Whether `skill_name.fn_name` is destructive. Unknown skill/fn -> False."""
+        skill = self.get(skill_name)
+        return bool(skill and skill.is_destructive(fn_name))
 
     def list(self, enabled_only: bool = True) -> list[Skill]:
         skills = list(self._skills.values())

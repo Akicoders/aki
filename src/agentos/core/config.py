@@ -9,6 +9,7 @@ import yaml
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from agentos.agents.registry import AgentProfilesConfig
 from agentos.core.project_breadcrumb import read_breadcrumb
 
 
@@ -174,6 +175,7 @@ class Config(BaseSettings):
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     skills: SkillsConfig = Field(default_factory=SkillsConfig)
     agent: AgentConfig = Field(default_factory=AgentConfig)
+    agent_profiles: AgentProfilesConfig = Field(default_factory=AgentProfilesConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
     @classmethod

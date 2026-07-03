@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, AsyncGenerator, Callable, Optional
 
+from agentos.agents import AgentProfile, AgentRegistry
 from agentos.core.config import get_config, AgentConfig
 from agentos.memory.repository import MemoryRepository, create_event, render_checkpoint
 from agentos.memory.repository import CHECKPOINT_REHYDRATION_CHAR_CAP
@@ -21,6 +22,26 @@ logger = logging.getLogger(__name__)
 
 # --- Deferred config (see follow-up: wire into AgentConfig) ---
 CHECKPOINT_CADENCE_TURNS = 1  # write checkpoint every N turns (1 = every turn)
+
+# deferred config
+GENERIC_CONTENT_PLACEHOLDERS: frozenset[str] = frozenset({
+    "todo", "tbd", "fixme", "...", "…",
+    "placeholder", "content", "contenido",
+    "content here", "contenido aqui", "your content here",
+    "tu contenido aqui",
+})
+
+# deferred config
+SCAFFOLDING_KEYWORDS = (
+    # English
+    "create", "generate", "set up", "setup", "scaffold", "bootstrap",
+    "new project", "new component", "new file", "new module", "boilerplate",
+    "start a project", "initialize",
+    # Spanish
+    "crear", "creá", "crea", "generar", "generá", "genera", "armar",
+    "armá", "arma", "estructura", "andamiaje", "nuevo proyecto",
+    "nuevo componente", "nuevo archivo", "inicializar", "montar",
+)
 
 StatusCallback = Callable[[str], None]
 
@@ -39,6 +60,102 @@ def _notify_status(status_callback: Optional[StatusCallback], message: str) -> N
         status_callback(message)
 
 
+def _format_iteration_status(iteration: int, max_iterations: int) -> str:
+    return f"Reasoning iteration {iteration}/{max_iterations}"
+
+
+def _format_final_iteration_status(iteration: int, max_iterations: int) -> str:
+    return f"Final iteration {iteration}/{max_iterations}; no automatic retry remains"
+
+
+def _format_tool_status(ordinal: int, total: int, safe_tool_name: str) -> str:
+    return f"Running tool {ordinal}/{total}: {safe_tool_name}"
+
+
+def _is_under_specified(fn_name: str, fn_args: dict[str, Any]) -> bool:
+    """True when a destructive call's args are too vague to execute safely.
+    Pure over fn_args -- no history, no turn count (spec: the 'simple' heuristic)."""
+    path = fn_args.get("path")
+    if path is None or not str(path).strip():
+        return True
+    if fn_name in ("write", "append"):
+        content = fn_args.get("content")
+        if content is None or not str(content).strip():
+            return True
+        if str(content).strip().lower() in GENERIC_CONTENT_PLACEHOLDERS:
+            return True
+    return False  # delete: path presence is sufficient specificity
+
+
+def _build_clarifying_question(skill_name: str, fn_name: str, fn_args: dict[str, Any]) -> str:
+    path = fn_args.get("path")
+    if path is None or not str(path).strip():
+        return (
+            "Antes de escribir necesito el destino exacto. "
+            "¿En qué ruta (path) querés que cree/modifique el archivo, "
+            "y con qué stack/estructura?"
+        )
+    return (
+        f"Voy a escribir en `{path}` pero el contenido está vacío o es un "
+        "placeholder genérico. ¿Qué contenido concreto querés que ponga?"
+    )
+
+
+def _profile_event_meta(role: str, profile: AgentProfile | None) -> dict[str, str]:
+    """Build event metadata without changing default no-profile payloads."""
+    meta = {"role": role}
+    if profile is not None:
+        meta["active_profile_id"] = profile.id
+    return meta
+
+
+def _openai_tool_name_to_policy_name(tool_name: str) -> str:
+    """Normalize OpenAI function names to profile policy names."""
+    return tool_name.replace("_", ".", 1)
+
+
+def _tool_is_allowed(profile: AgentProfile | None, skill_name: str, fn_name: str) -> bool:
+    if profile is None:
+        return True
+    return profile.tools.allows(f"{skill_name}.{fn_name}")
+
+
+def _filter_tools_for_profile(
+    tools: list[dict[str, Any]],
+    profile: AgentProfile | None,
+) -> list[dict[str, Any]]:
+    """Filter advertised tool schemas; runtime validation still enforces safety."""
+    if profile is None:
+        return tools
+    return [
+        tool
+        for tool in tools
+        if profile.tools.allows(_openai_tool_name_to_policy_name(tool["function"]["name"]))
+    ]
+
+
+def _filter_context_for_profile(
+    context: MemoryContext,
+    profile: AgentProfile | None,
+    session_id: str,
+) -> MemoryContext:
+    """Apply profile memory visibility without changing repository storage."""
+    if profile is None or profile.memory.scope in {"project", "global"}:
+        return context
+    if profile.memory.scope == "session":
+        return MemoryContext(
+            facts=[],
+            events=[event for event in context.events if event.session_id == session_id],
+            skills=context.skills,
+            total_tokens=0,
+        )
+    return MemoryContext(skills=context.skills)
+
+
+def _tool_policy_denial(tool_name: str) -> str:
+    return f"Tool `{tool_name}` is not allowed by the selected agent profile."
+
+
 class AgentOS:
     """Main agent orchestration class."""
 
@@ -48,11 +165,15 @@ class AgentOS:
         qwen_client: Optional[QwenClient] = None,
         memory: Optional[MemoryRepository] = None,
         skill_registry: Optional[SkillRegistry] = None,
+        agent_registry: Optional[AgentRegistry] = None,
     ):
         self.config = config or get_config().agent
         self.qwen = qwen_client or get_qwen_client()
         self.memory = memory or MemoryRepository()
         self.skills = skill_registry or get_skill_registry()
+        self.agent_registry = agent_registry or AgentRegistry.from_config(
+            get_config().agent_profiles
+        )
         self._init_skills()
 
     def _init_skills(self) -> None:
@@ -73,66 +194,90 @@ class AgentOS:
         session_id: Optional[str] = None,
         stream: bool = False,
         status_callback: Optional[StatusCallback] = None,
+        profile_id: Optional[str] = None,
     ) -> str:
         """Main chat entry point."""
         if not session_id:
             session_id = f"sess_{uuid.uuid4().hex[:8]}"
 
+        profile = self.agent_registry.resolve(profile_id) if profile_id else None
+        _notify_status(status_callback, "Starting turn")
+
         # 1. Store user input as event
-        user_event = create_event(
-            type=EventType.CONVERSATION,
-            project=project,
-            content=user_input,
-            meta={"role": "user"},
-            source="user",
-            session_id=session_id,
-        )
+        if profile is None or profile.memory.scope != "disabled":
+            create_event(
+                type=EventType.CONVERSATION,
+                project=project,
+                content=user_input,
+                meta=_profile_event_meta("user", profile),
+                source="user",
+                session_id=session_id,
+            )
         logger.info(f"User [{session_id}]: {user_input[:100]}")
 
         # 2. Assemble context from memory
         _notify_status(status_callback, "Collecting project context")
-        context = self.memory.assemble_context(
-            query=user_input,
-            project=project,
-            session_id=session_id,
-            max_tokens=get_config().memory.max_context_tokens,
-        )
+        if profile is not None and profile.memory.scope == "disabled":
+            context = MemoryContext()
+        else:
+            context = self.memory.assemble_context(
+                query=user_input,
+                project=project,
+                session_id=session_id,
+                max_tokens=get_config().memory.max_context_tokens,
+            )
+            context = _filter_context_for_profile(context, profile, session_id)
 
         # 3. Build messages for LLM
         messages: list[dict[str, Any]] = self._build_messages(
-            user_input, context, project, session_id=session_id
+            user_input, context, project, session_id=session_id, profile=profile
         )
 
         # 4. Get available tools
-        tools: list[dict[str, Any]] = self.skills.get_all_tools()
+        tools: list[dict[str, Any]] = _filter_tools_for_profile(
+            self.skills.get_all_tools(), profile
+        )
 
         # 5. Reasoning loop
-        _notify_status(status_callback, "Reasoning with Qwen")
-        outcome = await self._reasoning_loop(messages, tools, project, session_id)
+        outcome = await self._reasoning_loop(
+            messages,
+            tools,
+            project,
+            session_id,
+            status_callback=status_callback,
+            profile=profile,
+        )
         response = outcome.response
 
         # 6. Store agent response
         _notify_status(status_callback, "Saving conversation")
-        agent_event = create_event(
-            type=EventType.CONVERSATION,
-            project=project,
-            content=response,
-            meta={"role": "assistant"},
-            source="agent",
-            session_id=session_id,
-        )
+        if profile is None or profile.memory.scope != "disabled":
+            create_event(
+                type=EventType.CONVERSATION,
+                project=project,
+                content=response,
+                meta=_profile_event_meta("assistant", profile),
+                source="agent",
+                session_id=session_id,
+            )
 
         # 6b. Persist structured checkpoint (mutable current-state), every turn
         # (success or iteration-exhaustion), see design.md section 4a.
-        self.memory.write_checkpoint(
-            project=project,
-            session_id=session_id,
-            goal=user_input,
-            last_response=response,
-            last_tool_result=outcome.last_tool_summary,
-            iterations_exhausted=outcome.exhausted,
-        )
+        if profile is None or profile.memory.scope != "disabled":
+            checkpoint_kwargs: dict[str, Any] = {}
+            if profile is not None:
+                checkpoint_kwargs["active_profile_id"] = profile.id
+            self.memory.write_checkpoint(
+                project=project,
+                session_id=session_id,
+                goal=user_input,
+                last_response=response,
+                last_tool_result=outcome.last_tool_summary,
+                iterations_exhausted=outcome.exhausted,
+                **checkpoint_kwargs,
+            )
 
+        _notify_status(status_callback, "Turn exhausted" if outcome.exhausted else "Turn complete")
         logger.info(f"Agent [{session_id}]: {response[:100]}")
         return response
 
@@ -142,12 +287,18 @@ class AgentOS:
         context: MemoryContext,
         project: str,
         session_id: Optional[str] = None,
+        profile: Optional[AgentProfile] = None,
     ) -> list[dict[str, Any]]:
         """Build message history for LLM."""
-        system_prompt = self.config.system_prompt_template or (
-            "You are Aki, an AI agent with persistent project memory for coding workflows. "
-            "Help developers preserve durable facts, decisions, and procedures across sessions. "
-            "Be concise, practical, and careful with context budgets."
+        system_prompt = (
+            profile.prompt_template
+            if profile
+            else self.config.system_prompt_template
+            or (
+                "You are Aki, an AI agent with persistent project memory for coding workflows. "
+                "Help developers preserve durable facts, decisions, and procedures across sessions. "
+                "Be concise, practical, and careful with context budgets."
+            )
         )
 
         messages = [
@@ -159,7 +310,7 @@ class AgentOS:
         # through context.format_for_prompt / _fit_context_to_budget — it is
         # immune to the budget-fit truncation that governs facts/events (see
         # design.md section 4b, ADR-2).
-        if session_id:
+        if session_id and (profile is None or profile.memory.scope != "disabled"):
             checkpoint = self.memory.read_checkpoint(project, session_id)
             if checkpoint:
                 messages.append({
@@ -199,6 +350,20 @@ class AgentOS:
                     "content": f"SDD project context:\n{sdd_context}"
                 })
 
+        if any(kw in user_input.lower() for kw in SCAFFOLDING_KEYWORDS):
+            messages.append({
+                "role": "system",
+                "content": (
+                    "El pedido parece de scaffolding/creación de estructura. "
+                    "Antes de llamar a cualquier herramienta destructiva "
+                    "(filesystem.write / append / delete), verificá que tengas los "
+                    "detalles estructurales clave: ruta destino, framework/stack, "
+                    "convención de nombres y layout de archivos. Si falta alguno, "
+                    "hacé UNA pregunta aclaratoria concreta en tu respuesta en lugar "
+                    "de crear archivos a ciegas."
+                ),
+            })
+
         # Current user input
         messages.append({"role": "user", "content": user_input})
 
@@ -210,21 +375,42 @@ class AgentOS:
         tools: list[dict[str, Any]],
         project: str,
         session_id: str,
+        status_callback: Optional[StatusCallback] = None,
+        profile: Optional[AgentProfile] = None,
     ) -> ReasoningOutcome:
         """Execute reasoning loop with tool calls."""
-        max_iterations = self.config.max_iterations
-        temperature = self.config.temperature
+        max_iterations = (
+            profile.max_iterations
+            if profile and profile.max_iterations is not None
+            else self.config.max_iterations
+        )
+        temperature = (
+            profile.temperature
+            if profile and profile.temperature is not None
+            else self.config.temperature
+        )
         total_tool_calls = 0
         last_tools_used: list[str] = []
 
         for iteration in range(max_iterations):
-            logger.debug(f"Reasoning iteration {iteration + 1}/{max_iterations}")
+            current_iteration = iteration + 1
+            _notify_status(
+                status_callback,
+                _format_iteration_status(current_iteration, max_iterations),
+            )
+            if current_iteration == max_iterations:
+                _notify_status(
+                    status_callback,
+                    _format_final_iteration_status(current_iteration, max_iterations),
+                )
+            logger.debug(f"Reasoning iteration {current_iteration}/{max_iterations}")
 
             response: ChatResponse = await self.qwen.chat(
                 messages=messages,
                 tools=tools,
                 tool_choice="auto",
                 temperature=temperature,
+                **({"model": profile.model} if profile and profile.model else {}),
             )
 
             # Add assistant message to history
@@ -243,7 +429,8 @@ class AgentOS:
                 )
 
             # Execute tool calls
-            for tool_call in response.tool_calls:
+            total_tools_in_response = len(response.tool_calls)
+            for tool_ordinal, tool_call in enumerate(response.tool_calls, start=1):
                 fn_name = tool_call["function"]["name"]
                 fn_args = tool_call["function"]["arguments"]
                 tool_call_id = tool_call["id"]
@@ -255,8 +442,33 @@ class AgentOS:
                     skill_name, fn_name = "unknown", fn_name
 
                 logger.info(f"Tool call: {skill_name}.{fn_name}({fn_args})")
+
+                safe_tool_name = f"{skill_name}.{fn_name}"
+
+                if not _tool_is_allowed(profile, skill_name, fn_name):
+                    logger.info("Profile tool policy denied: %s", safe_tool_name)
+                    return ReasoningOutcome(
+                        response=_tool_policy_denial(safe_tool_name),
+                        last_tool_summary=", ".join(last_tools_used[-3:]),
+                        exhausted=False,
+                    )
+
+                if self.skills.is_destructive(skill_name, fn_name) and _is_under_specified(
+                    fn_name, fn_args
+                ):
+                    logger.info(f"Destructive gate fired: {skill_name}.{fn_name} under-specified")
+                    return ReasoningOutcome(
+                        response=_build_clarifying_question(skill_name, fn_name, fn_args),
+                        last_tool_summary=", ".join(last_tools_used[-3:]),
+                        exhausted=False,
+                    )
+
                 total_tool_calls += 1
-                last_tools_used.append(f"{skill_name}.{fn_name}")
+                last_tools_used.append(safe_tool_name)
+                _notify_status(
+                    status_callback,
+                    _format_tool_status(tool_ordinal, total_tools_in_response, safe_tool_name),
+                )
 
                 result: SkillResult = await self.skills.execute(skill_name, fn_name, fn_args)
 
@@ -268,20 +480,25 @@ class AgentOS:
                 }
                 messages.append(tool_result_msg)
 
-                # Log tool execution
-                create_event(
-                    type=EventType.CONVERSATION,
-                    project=project,
-                    content=f"Tool: {skill_name}.{fn_name} -> {'ok' if result.success else 'error'}",
-                    meta={
+                if profile is None or profile.memory.scope != "disabled":
+                    meta: dict[str, Any] = {
                         "tool": f"{skill_name}.{fn_name}",
                         "args": fn_args,
                         "success": result.success,
                         "error": result.error,
-                    },
-                    source="agent",
-                    session_id=session_id,
-                )
+                    }
+                    if profile is not None:
+                        meta["active_profile_id"] = profile.id
+
+                    # Log tool execution
+                    create_event(
+                        type=EventType.CONVERSATION,
+                        project=project,
+                        content=f"Tool: {skill_name}.{fn_name} -> {'ok' if result.success else 'error'}",
+                        meta=meta,
+                        source="agent",
+                        session_id=session_id,
+                    )
 
         # Max iterations reached
         return ReasoningOutcome(
@@ -298,14 +515,16 @@ class AgentOS:
     ) -> str:
         """Build an honest, actionable message when the reasoning loop is exhausted."""
         recent = last_tools_used[-3:] if last_tools_used else []
-        recent_str = ", ".join(recent) if recent else "ninguna"
+        last_attempted = f"tool {recent[-1]}" if recent else "reasoning iteration"
+        recent_str = ", ".join(recent) if recent else "none"
 
         return (
-            f"Se alcanzó el límite de {max_iterations} iteraciones sin llegar a una respuesta final "
-            f"({total_tool_calls} llamadas a herramientas realizadas, últimas usadas: {recent_str}).\n"
-            "No voy a reintentar automáticamente de otra forma. Podés: "
-            "acotar el pedido, subir el límite de iteraciones (`agent.max_iterations` en config), "
-            "o pedirme que continúe desde donde quedó."
+            f"The turn reached the {max_iterations}-iteration budget. "
+            "No final answer was produced. "
+            f"Last attempted: {last_attempted}. "
+            f"Tool calls completed: {total_tool_calls}; recent safe tool names: {recent_str}.\n"
+            "Try simplifying the request, clarifying the target outcome, "
+            "or continuing from the last checkpoint."
         )
 
     async def stream_chat(
@@ -314,6 +533,7 @@ class AgentOS:
         project: str = "default",
         session_id: Optional[str] = None,
         status_callback: Optional[StatusCallback] = None,
+        profile_id: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         """Stream chat response (not fully implemented with tools yet)."""
         response = await self.chat(
@@ -321,6 +541,7 @@ class AgentOS:
             project,
             session_id,
             status_callback=status_callback,
+            profile_id=profile_id,
         )
         for chunk in response.split():
             yield chunk + " "

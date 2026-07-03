@@ -9,6 +9,9 @@ from agentos.agent.core import AgentOS
 from agentos.qwen.client import ChatResponse
 
 
+pytestmark = pytest.mark.unit
+
+
 def _tool_call_response(tool_name: str, call_id: str) -> ChatResponse:
     return ChatResponse(
         content="",
@@ -36,6 +39,7 @@ def agent_with_infinite_tool_calls(monkeypatch):
     ]
 
     skills = MagicMock()
+    skills.is_destructive = MagicMock(return_value=False)
     result = MagicMock()
     result.success = True
     result.error = None
@@ -60,5 +64,20 @@ def test_exhaustion_message_is_honest_and_actionable(agent_with_infinite_tool_ca
 
     assert "3" in result  # max_iterations surfaced
     assert "memory.recall" in result  # last tool used surfaced
-    assert "no voy a reintentar" in result.lower() or "no reintent" in result.lower()
-    assert "otra forma" not in result.lower() or "no voy a" in result.lower()
+    assert "No final answer was produced" in result
+    assert "simplify" in result.lower() or "clarify" in result.lower()
+    forbidden_terms = ("worker", "sub-agent", "delegation", "routing", "orchestration")
+    assert all(term not in result.lower() for term in forbidden_terms)
+
+
+def test_exhaustion_message_without_tool_activity_names_reasoning_phase():
+    result = AgentOS._format_exhaustion_message(
+        max_iterations=2,
+        total_tool_calls=0,
+        last_tools_used=[],
+    )
+
+    assert "2" in result
+    assert "No final answer was produced" in result
+    assert "Last attempted: reasoning iteration" in result
+    assert "tool" not in result.split("Last attempted:", 1)[1].split(".", 1)[0].lower()

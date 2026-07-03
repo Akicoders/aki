@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 class FilesystemSkill(Skill):
     name = "filesystem"
     description = "File operations: read, write, search, glob, list"
+    destructive_functions = frozenset({"write", "append", "delete"})
 
     def __init__(self, config: Optional[dict] = None):
         super().__init__(config)

@@ -6,6 +6,7 @@ import logging
 import os
 import warnings
 from contextlib import redirect_stderr, redirect_stdout
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
@@ -28,6 +29,8 @@ from .models import (
 )
 
 
+logger = logging.getLogger(__name__)
+
 _MODEL_LOGGERS = ("huggingface_hub", "sentence_transformers", "transformers")
 
 # --- Deferred config (see follow-up: wire into AgentConfig/MemoryConfig) ---
@@ -36,6 +39,31 @@ CHECKPOINT_REHYDRATION_CHAR_CAP = 2000  # hard cap on rendered rehydration slot
 RESERVED_FACT_KEY_PREFIX = "session:"   # reserved-key namespace guard
 LAST_SESSION_KEY = "session:last"
 CHECKPOINT_KEY_TEMPLATE = RESERVED_FACT_KEY_PREFIX + "{session_id}:checkpoint"
+
+
+@dataclass
+class SessionSummary:
+    """Lightweight, typed view of a session's checkpoint for listing surfaces."""
+
+    session_id: str
+    goal: str
+    updated_at: datetime
+    iterations_exhausted: bool
+
+
+def _session_id_from_key(key: str) -> str:
+    """Derive session_id from a `session:{id}:checkpoint` key (defensive fallback)."""
+    return key[len(RESERVED_FACT_KEY_PREFIX):].removesuffix(":checkpoint")
+
+
+def _parse_updated_at(iso_or_none: Optional[str], fallback_dt: datetime) -> datetime:
+    """Parse an ISO `updated_at` string, falling back to the fact row's own column."""
+    if iso_or_none:
+        try:
+            return datetime.fromisoformat(iso_or_none.rstrip("Z"))
+        except (ValueError, TypeError):
+            pass
+    return fallback_dt
 
 
 def render_checkpoint(checkpoint: dict, cap: int) -> str:
@@ -335,6 +363,7 @@ class MemoryRepository:
         last_response: str,
         last_tool_result: str,
         iterations_exhausted: bool,
+        active_profile_id: str | None = None,
     ) -> None:
         """Upsert the structured per-session checkpoint and touch session:last.
 
@@ -353,6 +382,8 @@ class MemoryRepository:
             "iterations_exhausted": iterations_exhausted,
             "updated_at": datetime.utcnow().isoformat() + "Z",
         }
+        if active_profile_id is not None:
+            payload["active_profile_id"] = active_profile_id
         key = CHECKPOINT_KEY_TEMPLATE.format(session_id=session_id)
         self._upsert_reserved_fact(key, f"project:{project}", json.dumps(payload))
         self.touch_last_session(project, session_id)
@@ -369,6 +400,47 @@ class MemoryRepository:
         data.setdefault("last_response", "")
         data.setdefault("iterations_exhausted", False)
         return data
+
+    def list_sessions(self, project: str, limit: int = 20) -> list[SessionSummary]:
+        """Return a project's sessions derived from checkpoint facts, newest-first.
+
+        Bulk best-effort scan: unlike `read_checkpoint` (exact single-key
+        read, raises on corrupt JSON), a single malformed row here must not
+        blank the whole list. Corrupt rows are logged at WARNING and
+        skipped. See design.md ADR-1.
+        """
+        scope = f"project:{project}"
+        like_pattern = RESERVED_FACT_KEY_PREFIX + "%:checkpoint"
+        with self.db.session() as session:
+            stmt = (
+                select(MemoryFactModel)
+                .where(
+                    and_(
+                        MemoryFactModel.scope == scope,
+                        MemoryFactModel.key.like(like_pattern),
+                    )
+                )
+                .order_by(MemoryFactModel.updated_at.desc())
+                .limit(limit)
+            )
+            models = session.execute(stmt).scalars().all()
+
+        summaries: list[SessionSummary] = []
+        for model in models:
+            try:
+                data = json.loads(model.value)
+            except (json.JSONDecodeError, TypeError) as exc:
+                logger.warning("Skipping corrupt checkpoint fact key=%s: %s", model.key, exc)
+                continue
+            summaries.append(
+                SessionSummary(
+                    session_id=data.get("session_id") or _session_id_from_key(model.key),
+                    goal=(data.get("goal") or ""),
+                    updated_at=_parse_updated_at(data.get("updated_at"), model.updated_at),
+                    iterations_exhausted=bool(data.get("iterations_exhausted", False)),
+                )
+            )
+        return summaries
 
     def increment_fact_access(self, fact_id: str) -> None:
         with self.db.session() as session:
