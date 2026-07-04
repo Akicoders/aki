@@ -43,7 +43,7 @@ class TestUpdateCommand:
             ["git", "rev-parse", "--show-toplevel"],
             ["git", "pull"],
             ["/usr/bin/uv", "sync", "--all-extras"],
-            ["/usr/bin/uv", "tool", "install", "--editable", ".", "--force"],
+            ["/usr/bin/uv", "tool", "install", "--editable", ".[web]", "--force"],
         ]
         assert all(call.kwargs.get("cwd") == source_dir for call in mock_run.call_args_list)
 
