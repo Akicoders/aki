@@ -43,6 +43,17 @@ SCAFFOLDING_KEYWORDS = (
     "nuevo componente", "nuevo archivo", "inicializar", "montar",
 )
 
+# deferred config
+VERSION_CONTROL_KEYWORDS = (
+    # English
+    "git", "git repo", "git repository", "version control", "repo status",
+    "repository status", "initialize git", "init git",
+    # Spanish
+    "versionamiento", "control de versiones", "poné git", "pone git",
+    "repositorio git", "estado del repo", "estado del repositorio",
+    "inicializá git", "inicializa git", "revisar el estado del repo",
+)
+
 StatusCallback = Callable[[str], None]
 
 
@@ -162,6 +173,25 @@ def _filter_context_for_profile(
 
 def _tool_policy_denial(tool_name: str) -> str:
     return f"Tool `{tool_name}` is not allowed by the selected agent profile."
+
+
+def _split_tool_name(tool_name: str, registry: SkillRegistry) -> tuple[str, str]:
+    skill_names: list[str] = []
+    try:
+        skill_names = [skill.name for skill in registry.list(enabled_only=False)]
+    except Exception:
+        skill_names = []
+    if not skill_names:
+        skill_names = list(BUILTIN_SKILLS.keys())
+
+    for skill_name in sorted(skill_names, key=len, reverse=True):
+        prefix = f"{skill_name}_"
+        if tool_name.startswith(prefix):
+            return skill_name, tool_name[len(prefix):]
+    if "_" in tool_name:
+        prefix, remainder = tool_name.split("_", 1)
+        return prefix, remainder
+    return "unknown", tool_name
 
 
 class AgentOS:
@@ -372,6 +402,18 @@ class AgentOS:
                 ),
             })
 
+        if any(kw in user_input.lower() for kw in VERSION_CONTROL_KEYWORDS):
+            messages.append({
+                "role": "system",
+                "content": (
+                    "El pedido parece de versionado/repositorio. Primero inspeccioná el estado real "
+                    "con `git_ops.status`. Si la carpeta no es un repo y el usuario quiere activar "
+                    "git/versionamiento, preferí `git_ops.init` para inicializarlo de forma segura. "
+                    "No uses `filesystem.write`/`append`/`delete` para fabricar `.git` ni para tocar "
+                    "rutas internas del repositorio."
+                ),
+            })
+
         # Current user input
         messages.append({"role": "user", "content": user_input})
 
@@ -456,10 +498,7 @@ class AgentOS:
                     continue
 
                 # Parse skill_name.function_name
-                if "_" in fn_name:
-                    skill_name, fn_name = fn_name.split("_", 1)
-                else:
-                    skill_name, fn_name = "unknown", fn_name
+                skill_name, fn_name = _split_tool_name(fn_name, self.skills)
 
                 logger.info(f"Tool call: {skill_name}.{fn_name}({fn_args})")
 
