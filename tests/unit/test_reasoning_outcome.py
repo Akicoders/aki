@@ -139,9 +139,9 @@ def test_reasoning_loop_reports_iteration_progress_and_final_warning_before_exha
     )
 
     assert outcome.exhausted is True
-    assert status_updates[:4] == [
-        "Reasoning iteration 1/2",
-        "Running tool 1/1: memory.recall",
-        "Reasoning iteration 2/2",
-        "Final iteration 2/2; no automatic retry remains",
+    assert status_updates[:3] == [
+        "🧠 Thinking — iteration 1/2",
+        "🔧 Running memory.recall (1/1)",
+        "🧠 Thinking — iteration 2/2",
     ]
+    assert "Final iteration 2/2; no automatic retry remains" not in status_updates

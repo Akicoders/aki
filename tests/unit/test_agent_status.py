@@ -84,6 +84,37 @@ class FakeToolRegistry(SkillRegistry):
         return Result()
 
 
+def test_format_thinking_status_mid_loop():
+    assert agent_core._format_thinking_status(2, 5) == "🧠 Thinking — iteration 2/5"
+
+
+def test_format_thinking_status_final_iteration():
+    assert agent_core._format_thinking_status(5, 5) == "🧠 Thinking — iteration 5/5"
+
+
+def test_format_tool_status_renders_new_template():
+    assert (
+        agent_core._format_tool_status(2, 3, "memory.search")
+        == "🔧 Running memory.search (2/3)"
+    )
+
+
+def test_format_context_status():
+    assert agent_core._format_context_status() == "📚 Collecting project context"
+
+
+def test_format_saving_status():
+    assert agent_core._format_saving_status() == "💾 Saving conversation"
+
+
+def test_format_terminal_status_complete():
+    assert agent_core._format_terminal_status(False) == "✅ Turn complete"
+
+
+def test_format_terminal_status_exhausted():
+    assert agent_core._format_terminal_status(True) == "⏳ Turn exhausted"
+
+
 @pytest.mark.asyncio
 async def test_agent_chat_emits_useful_status_updates(monkeypatch):
     monkeypatch.setattr(agent_core.AgentOS, "_init_skills", lambda self: None)
@@ -102,10 +133,10 @@ async def test_agent_chat_emits_useful_status_updates(monkeypatch):
     assert response == "hola"
     assert status_updates == [
         "Starting turn",
-        "Collecting project context",
-        "Reasoning iteration 1/3",
-        "Saving conversation",
-        "Turn complete",
+        "📚 Collecting project context",
+        "🧠 Thinking — iteration 1/3",
+        "💾 Saving conversation",
+        "✅ Turn complete",
     ]
 
 
@@ -132,10 +163,9 @@ async def test_reasoning_loop_emits_safe_iteration_final_and_tool_statuses(monke
 
     assert outcome.exhausted is True
     assert status_updates == [
-        "Reasoning iteration 1/1",
-        "Final iteration 1/1; no automatic retry remains",
-        "Running tool 1/2: memory.recall",
-        "Running tool 2/2: filesystem.read",
+        "🧠 Thinking — iteration 1/1",
+        "🔧 Running memory.recall (1/2)",
+        "🔧 Running filesystem.read (2/2)",
     ]
     rendered_status = "\n".join(status_updates)
     assert "api_key=secret-123" not in rendered_status

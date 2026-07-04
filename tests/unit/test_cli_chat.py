@@ -60,8 +60,8 @@ class FakeAgent:
         self.chat_calls.append({"profile_id": profile_id})
         self.chat_status_callbacks.append(status_callback)
         if status_callback is not None:
-            status_callback("Collecting project context")
-            status_callback("Reasoning iteration 1/3")
+            status_callback("📚 Collecting project context")
+            status_callback("🧠 Thinking — iteration 1/3")
         return "hola"
 
     async def stream_chat(
@@ -74,7 +74,7 @@ class FakeAgent:
     ):
         self.chat_calls.append({"profile_id": profile_id, "stream": True})
         if status_callback is not None:
-            status_callback("Collecting project context")
+            status_callback("📚 Collecting project context")
         yield "hola "
 
 
@@ -113,8 +113,8 @@ def test_chat_command_shows_startup_status(monkeypatch):
 
     assert result.exit_code == 0
     assert any("Loading memory engine" in message for message in fake_console.status_messages)
-    assert any("Collecting project context" in message for message in fake_console.status_messages)
-    assert any("Reasoning iteration 1/3" in message for message in fake_console.status_messages)
+    assert any("📚 Collecting project context" in message for message in fake_console.status_messages)
+    assert any("🧠 Thinking — iteration 1/3" in message for message in fake_console.status_messages)
     assert fake_console.print_calls
 
 
@@ -174,8 +174,8 @@ def test_interactive_uses_status_callback_for_each_prompt(monkeypatch):
 
     assert fake_agent.chat_status_callbacks
     assert all(callback is not None for callback in fake_agent.chat_status_callbacks)
-    assert any("Collecting project context" in message for message in fake_console.status_messages)
-    assert any("Reasoning iteration 1/3" in message for message in fake_console.status_messages)
+    assert any("📚 Collecting project context" in message for message in fake_console.status_messages)
+    assert any("🧠 Thinking — iteration 1/3" in message for message in fake_console.status_messages)
     assert fake_console.print_calls
 
 

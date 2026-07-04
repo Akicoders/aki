@@ -60,16 +60,24 @@ def _notify_status(status_callback: Optional[StatusCallback], message: str) -> N
         status_callback(message)
 
 
-def _format_iteration_status(iteration: int, max_iterations: int) -> str:
-    return f"Reasoning iteration {iteration}/{max_iterations}"
-
-
-def _format_final_iteration_status(iteration: int, max_iterations: int) -> str:
-    return f"Final iteration {iteration}/{max_iterations}; no automatic retry remains"
+def _format_thinking_status(iteration: int, max_iterations: int) -> str:
+    return f"🧠 Thinking — iteration {iteration}/{max_iterations}"
 
 
 def _format_tool_status(ordinal: int, total: int, safe_tool_name: str) -> str:
-    return f"Running tool {ordinal}/{total}: {safe_tool_name}"
+    return f"🔧 Running {safe_tool_name} ({ordinal}/{total})"
+
+
+def _format_context_status() -> str:
+    return "📚 Collecting project context"
+
+
+def _format_saving_status() -> str:
+    return "💾 Saving conversation"
+
+
+def _format_terminal_status(exhausted: bool) -> str:
+    return "⏳ Turn exhausted" if exhausted else "✅ Turn complete"
 
 
 def _is_under_specified(fn_name: str, fn_args: dict[str, Any]) -> bool:
@@ -216,7 +224,7 @@ class AgentOS:
         logger.info(f"User [{session_id}]: {user_input[:100]}")
 
         # 2. Assemble context from memory
-        _notify_status(status_callback, "Collecting project context")
+        _notify_status(status_callback, _format_context_status())
         if profile is not None and profile.memory.scope == "disabled":
             context = MemoryContext()
         else:
@@ -250,7 +258,7 @@ class AgentOS:
         response = outcome.response
 
         # 6. Store agent response
-        _notify_status(status_callback, "Saving conversation")
+        _notify_status(status_callback, _format_saving_status())
         if profile is None or profile.memory.scope != "disabled":
             create_event(
                 type=EventType.CONVERSATION,
@@ -277,7 +285,7 @@ class AgentOS:
                 **checkpoint_kwargs,
             )
 
-        _notify_status(status_callback, "Turn exhausted" if outcome.exhausted else "Turn complete")
+        _notify_status(status_callback, _format_terminal_status(outcome.exhausted))
         logger.info(f"Agent [{session_id}]: {response[:100]}")
         return response
 
@@ -377,8 +385,16 @@ class AgentOS:
         session_id: str,
         status_callback: Optional[StatusCallback] = None,
         profile: Optional[AgentProfile] = None,
+        depth: int = 0,
     ) -> ReasoningOutcome:
-        """Execute reasoning loop with tool calls."""
+        """Execute reasoning loop with tool calls.
+
+        `depth` is threaded through nested/recursive invocations: 0 for the
+        supervisor's own loop, 1 for a worker loop spawned by delegation. The
+        synthetic `delegate` tool schema is only exposed to the model when
+        `depth == 0` (see `_build_delegate_tool_schema`), which is the sole
+        structural guard against a worker delegating further.
+        """
         max_iterations = (
             profile.max_iterations
             if profile and profile.max_iterations is not None
@@ -389,6 +405,8 @@ class AgentOS:
             if profile and profile.temperature is not None
             else self.config.temperature
         )
+        if depth == 0:
+            tools = [*tools, self._build_delegate_tool_schema()]
         total_tool_calls = 0
         last_tools_used: list[str] = []
 
@@ -396,13 +414,8 @@ class AgentOS:
             current_iteration = iteration + 1
             _notify_status(
                 status_callback,
-                _format_iteration_status(current_iteration, max_iterations),
+                _format_thinking_status(current_iteration, max_iterations),
             )
-            if current_iteration == max_iterations:
-                _notify_status(
-                    status_callback,
-                    _format_final_iteration_status(current_iteration, max_iterations),
-                )
             logger.debug(f"Reasoning iteration {current_iteration}/{max_iterations}")
 
             response: ChatResponse = await self.qwen.chat(
@@ -434,6 +447,13 @@ class AgentOS:
                 fn_name = tool_call["function"]["name"]
                 fn_args = tool_call["function"]["arguments"]
                 tool_call_id = tool_call["id"]
+
+                if depth == 0 and fn_name == "delegate":
+                    delegate_msg = await self._run_delegation(
+                        fn_args, project, session_id, tool_call_id, status_callback
+                    )
+                    messages.append(delegate_msg)
+                    continue
 
                 # Parse skill_name.function_name
                 if "_" in fn_name:
@@ -506,6 +526,120 @@ class AgentOS:
             last_tool_summary=", ".join(last_tools_used[-3:]),
             exhausted=True,
         )
+
+    async def _run_delegation(
+        self,
+        fn_args: dict[str, Any],
+        project: str,
+        session_id: str,
+        tool_call_id: str,
+        status_callback: Optional[StatusCallback],
+    ) -> dict[str, Any]:
+        """Resolve, run, and adapt a single worker delegation call.
+
+        Returns the tool-result message to append to the supervisor's
+        `messages`. Unknown `profile_id` is adapted into an error tool-result
+        message rather than propagating `ProfileNotFoundError` -- the
+        supervisor stays in control of recovery (see Resolved Open Decisions,
+        openspec/changes/multi-agent-orchestration/tasks.md).
+        """
+        profile_id = fn_args.get("profile_id")
+        try:
+            worker_profile = self.agent_registry.resolve(profile_id)
+        except Exception:
+            return {
+                "role": "tool",
+                "tool_call_id": tool_call_id,
+                "content": f"delegate error: unknown profile '{profile_id}'",
+            }
+
+        task = fn_args.get("task", "")
+        worker_sid = self._derive_worker_session_id(session_id, tool_call_id)
+
+        worker_context = self.memory.assemble_context(
+            query=task,
+            project=project,
+            session_id=worker_sid,
+            max_tokens=get_config().memory.max_context_tokens,
+        )
+        worker_context = _filter_context_for_profile(worker_context, worker_profile, worker_sid)
+
+        worker_messages = self._build_messages(
+            task, worker_context, project, session_id=worker_sid, profile=worker_profile
+        )
+        worker_tools = _filter_tools_for_profile(self.skills.get_all_tools(), worker_profile)
+
+        outcome = await self._reasoning_loop(
+            worker_messages,
+            worker_tools,
+            project,
+            worker_sid,
+            status_callback=status_callback,
+            profile=worker_profile,
+            depth=1,
+        )
+
+        return {
+            "role": "tool",
+            "tool_call_id": tool_call_id,
+            "content": self._adapt_worker_outcome(outcome),
+        }
+
+    @staticmethod
+    def _build_delegate_tool_schema() -> dict[str, Any]:
+        """OpenAI-style function schema for the synthetic `delegate` tool.
+
+        Appended to the tools list only when `depth == 0` (see
+        `_reasoning_loop`); never present in a worker's own tools list.
+        """
+        return {
+            "type": "function",
+            "function": {
+                "name": "delegate",
+                "description": (
+                    "Delegate a task to a specialized worker agent profile. "
+                    "The worker runs its own bounded reasoning loop and "
+                    "returns its result as this tool's result."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "profile_id": {
+                            "type": "string",
+                            "description": "AgentRegistry-resolvable id of the worker profile.",
+                        },
+                        "task": {
+                            "type": "string",
+                            "description": "Free-form task description, handed to the worker as its initial user message.",
+                        },
+                    },
+                    "required": ["profile_id", "task"],
+                },
+            },
+        }
+
+    @staticmethod
+    def _derive_worker_session_id(parent_session_id: str, tool_call_id: str) -> str:
+        """Deterministically derive a worker session id from the parent
+        session id and the delegating tool-call id. Reproducible for a given
+        (parent_session_id, tool_call_id) pair; distinct per tool_call_id."""
+        return f"{parent_session_id}:delegate:{tool_call_id}"
+
+    @staticmethod
+    def _adapt_worker_outcome(outcome: ReasoningOutcome) -> str:
+        """Adapt a worker's ReasoningOutcome into tool-result content.
+
+        Success -> outcome.response verbatim (no last_tool_summary folded
+        in -- see openspec/changes/multi-agent-orchestration Resolved Open
+        Decisions). Exhausted -> a clearly-marked "did not finish" wrapper
+        so the supervisor's model does not mistake it for a completed answer.
+        """
+        if outcome.exhausted:
+            return (
+                "Worker did not finish within its iteration budget "
+                f"(exhausted=True). Last worker output: {outcome.response}"
+            )
+        return outcome.response
 
     @staticmethod
     def _format_exhaustion_message(

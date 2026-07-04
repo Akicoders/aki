@@ -466,10 +466,10 @@ def update():
 
         console.print("[cyan]Refreshing the global aki tool shim...[/cyan]")
         run_update_command(
-            [uv_bin, "tool", "install", "--editable", ".", "--force"],
+            [uv_bin, "tool", "install", "--editable", ".", "--force", "--all-extras"],
             cwd=source_dir,
             missing_message="uv is required to refresh the Aki tool install but was not found.",
-            failure_message="uv tool install --editable . --force failed",
+            failure_message="uv tool install --editable . --force --all-extras failed",
         )
     except UpdateError as exc:
         console.print(f"[red]{exc}[/red]")

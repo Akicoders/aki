@@ -130,6 +130,7 @@ async def test_no_profile_chat_preserves_default_prompt_model_tools_and_memory(m
     assert [tool["function"]["name"] for tool in qwen.calls[0]["tools"]] == [
         "memory_recall",
         "filesystem_read",
+        "delegate",
     ]
     assert events[0]["meta"] == {"role": "user"}
     assert events[1]["meta"] == {"role": "assistant"}
@@ -187,7 +188,7 @@ async def test_selected_profile_applies_prompt_model_temperature_iterations_and_
     assert qwen.calls[0]["messages"][0] == {"role": "system", "content": "Reviewer prompt: inspect risks."}
     assert qwen.calls[0]["model"] == "qwen-plus"
     assert qwen.calls[0]["temperature"] == 0.1
-    assert [tool["function"]["name"] for tool in qwen.calls[0]["tools"]] == ["memory_recall"]
+    assert [tool["function"]["name"] for tool in qwen.calls[0]["tools"]] == ["memory_recall", "delegate"]
 
 
 @pytest.mark.asyncio
