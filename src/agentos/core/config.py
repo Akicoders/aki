@@ -149,7 +149,7 @@ class SkillsConfig(BaseSettings):
 class AgentConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="AGENT_")
 
-    max_iterations: int = 5
+    max_iterations: int = Field(default=20, gt=0, le=100)
     temperature: float = 0.3
     system_prompt_template: str = ""
     memory_injection_template: str = ""

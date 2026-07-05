@@ -163,6 +163,18 @@ MEMORY_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
 MEMORY_MAX_CONTEXT_TOKENS=8000
 ```
 
+Agent behaviour:
+
+```bash
+AGENT_MAX_ITERATIONS=20
+```
+
+`AGENT_MAX_ITERATIONS` caps how many reasoning iterations the agent may take
+before it stops and reports exhaustion; one iteration is one model
+round-trip, so higher values allow more tool-heavy tasks at the cost of more
+round-trips. Default is `20`, and the value must be between `1` and `100`
+(inclusive) — values outside that range fail config construction.
+
 `config.yaml` contains the same defaults for local development. Do not commit real API keys.
 
 ## Usage
