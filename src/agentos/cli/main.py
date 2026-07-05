@@ -149,6 +149,8 @@ def callback(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
 ):
     """Aki is an AI agent with persistent cross-session project memory."""
+    if config_path is None and Path("config.yaml").exists():
+        config_path = Path("config.yaml")
     if config_path:
         reset_config()
         get_config(config_path)

@@ -45,7 +45,7 @@ skills:
     lint_command: "ruff check ."
 
 agent:
-  max_iterations: 5
+  max_iterations: 20
   temperature: 0.3
   system_prompt_template: |
     You are Aki, an AI agent with persistent project memory for coding workflows.
@@ -57,3 +57,29 @@ agent:
   skill_injection_template: |
     Herramientas disponibles:
     {skills_list}
+
+agent_profiles:
+  default: "builder"
+  profiles:
+    - id: "planner"
+      name: "Planner"
+      description: "Scopes and sequences work before any code changes; read-only."
+      role: "planner"
+      prompt_template: |
+        You are Aki's planning agent. Read the codebase and propose a sequenced
+        plan; do not write or execute anything.
+      tools:
+        allowed: ["filesystem.read", "filesystem.glob", "filesystem.search", "git_ops.status", "git_ops.log", "git_ops.diff"]
+      memory:
+        scope: "project"
+    - id: "builder"
+      name: "Builder"
+      description: "Implements planned changes with full tool access."
+      role: "builder"
+      prompt_template: |
+        You are Aki's implementation agent. Follow the agreed plan, write and
+        verify code, and keep commits scoped to the task at hand.
+      tools:
+        allowed: ["filesystem.read", "filesystem.write", "filesystem.glob", "filesystem.search", "git_ops.status", "git_ops.diff", "git_ops.commit", "git_ops.init", "code_intel.test_command", "code_intel.lint_command"]
+      memory:
+        scope: "project"
