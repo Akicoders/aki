@@ -54,6 +54,22 @@ VERSION_CONTROL_KEYWORDS = (
     "inicializá git", "inicializa git", "revisar el estado del repo",
 )
 
+# deferred config
+NEW_PRODUCT_KEYWORDS = (
+    # English — whole-product / whole-app framing only
+    "build me a new app", "build me an app", "build a new project",
+    "start a new project", "create a whole new product", "whole new app",
+    "the whole app built", "set up the entire project", "the entire project",
+    "build the whole thing", "from scratch", "entire application",
+    # Spanish — whole-product / whole-app framing only
+    "toda la app", "toda la aplicación", "todo el proyecto",
+    "proyecto nuevo", "nuevo desde cero", "desde cero",
+    "arrancar desde cero", "poné en marcha el proyecto",
+    "poner en marcha el proyecto", "tener el proyecto hecho",
+    "necesitamos ya poder tener", "que esté hecho el proyecto",
+    "armar toda la app",
+)
+
 StatusCallback = Callable[[str], None]
 
 
@@ -64,6 +80,37 @@ class ReasoningOutcome:
     response: str
     last_tool_summary: str
     exhausted: bool
+
+
+def _is_new_product_request(message: str) -> bool:
+    """True when the message frames a whole-new-product/app ask.
+
+    Pure over `message` — coarse bilingual phrase match, independent of
+    SCAFFOLDING_KEYWORDS. No history, no I/O.
+    """
+    lowered = message.lower()
+    return any(kw in lowered for kw in NEW_PRODUCT_KEYWORDS)
+
+
+def _build_new_product_suggestion(has_sdd: bool) -> str:
+    """Compose the SDD-scoping suggestion; branch on detect_sdd_artifacts()."""
+    if has_sdd:
+        return (
+            "Esto parece el arranque de un proyecto/app completo. Ya hay artefactos "
+            "SDD en este proyecto, así que antes de tirar comandos sueltos conviene "
+            "retomar el flujo SDD en curso (continuar la propuesta/spec/tareas "
+            "existentes) para no perder el hilo del plan. "
+            "Si preferís que lo haga directo igual, decímelo en el próximo mensaje "
+            "y sigo sin SDD."
+        )
+    return (
+        "Esto parece el arranque de un proyecto/app completo. Todavía no hay "
+        "artefactos SDD en este proyecto; en vez de crear archivos a ciegas conviene "
+        "arrancar un flujo SDD con `sdd-init` para acotar el alcance y planificar "
+        "antes de escribir código. "
+        "Si preferís que lo haga directo igual, decímelo en el próximo mensaje "
+        "y sigo sin SDD."
+    )
 
 
 def _notify_status(status_callback: Optional[StatusCallback], message: str) -> None:
@@ -225,6 +272,25 @@ class AgentOS:
                 self.skills.register(skill)
                 logger.info(f"Initialized skill: {skill_name}")
 
+    def _should_suggest_sdd_flow(
+        self,
+        user_input: str,
+        profile: Optional[AgentProfile],
+        project: str,
+        session_id: str,
+    ) -> bool:
+        """All three gate conditions for the request-level SDD suggestion.
+
+        Fires only when: memory is not disabled, this is the first turn
+        (no checkpoint), and the input reads like a whole-new-product ask.
+        Order is cheapest-and-most-suppressive first.
+        """
+        if profile is not None and profile.memory.scope == "disabled":
+            return False
+        if not _is_new_product_request(user_input):
+            return False
+        return self.memory.read_checkpoint(project, session_id) is None
+
     async def chat(
         self,
         user_input: str,
@@ -276,15 +342,23 @@ class AgentOS:
             self.skills.get_all_tools(), profile
         )
 
-        # 5. Reasoning loop
-        outcome = await self._reasoning_loop(
-            messages,
-            tools,
-            project,
-            session_id,
-            status_callback=status_callback,
-            profile=profile,
-        )
+        # 5. Reasoning loop (or request-level SDD short-circuit)
+        if self._should_suggest_sdd_flow(user_input, profile, project, session_id):
+            sdd_status = detect_sdd_artifacts()
+            outcome = ReasoningOutcome(
+                response=_build_new_product_suggestion(sdd_status.has_sdd),
+                last_tool_summary="",
+                exhausted=False,
+            )
+        else:
+            outcome = await self._reasoning_loop(
+                messages,
+                tools,
+                project,
+                session_id,
+                status_callback=status_callback,
+                profile=profile,
+            )
         response = outcome.response
 
         # 6. Store agent response
