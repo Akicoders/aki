@@ -86,6 +86,44 @@ console = Console()
 logger = logging.getLogger(__name__)
 
 
+def _configure_logging(verbose: bool) -> None:
+    """Route logs to a file by default so tracebacks never leak to the terminal."""
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG if verbose else logging.INFO)
+
+    log_dir = _global_home() / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    file_handler = logging.FileHandler(log_dir / "aki.log")
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    )
+    root.handlers.clear()
+    root.addHandler(file_handler)
+
+    if verbose:
+        stream_handler = logging.StreamHandler()
+        stream_handler.setLevel(logging.DEBUG)
+        root.addHandler(stream_handler)
+
+
+def _friendly_turn_error(exc: Exception) -> str:
+    """Map low-level exceptions to a short, actionable message for the user."""
+    import httpx
+
+    if isinstance(exc, httpx.TimeoutException) or type(exc).__name__ == "APITimeoutError":
+        return "Qwen no respondió a tiempo (timeout). Probá de nuevo o revisá tu conexión."
+    if isinstance(exc, httpx.ConnectError):
+        return "No se pudo conectar con Qwen. Verificá tu conexión a internet o el estado del servicio."
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        if status == 401:
+            return "Qwen rechazó la API key (401). Revisá QWEN_API_KEY / DASHSCOPE_API_KEY."
+        if status == 429:
+            return "Límite de uso de Qwen alcanzado (429). Esperá un momento y reintentá."
+        return f"Qwen devolvió un error HTTP {status}."
+    return str(exc)
+
+
 def _format_status(message: str) -> str:
     return f"[bold cyan]{message}...[/bold cyan]"
 
@@ -163,9 +201,7 @@ def callback(
     """Aki is an AI agent with persistent cross-session project memory."""
     reset_config()
     get_config(config_path)
-    if verbose:
-        import logging
-        logging.basicConfig(level=logging.DEBUG)
+    _configure_logging(verbose)
     if ctx.invoked_subcommand is None:
         render_default_entry(console)
 
@@ -965,7 +1001,7 @@ async def _async_interactive(agent, project, session_id, profile_id: Optional[st
             break
         except Exception as exc:
             logger.exception("Interactive turn failed")
-            console.print(f"[red]Turn failed:[/red] {exc}")
+            console.print(f"[red]Turn failed:[/red] {_friendly_turn_error(exc)}")
             console.print("[dim]Tip: run `aki sdd-init` to structure this as a spec-driven change.[/dim]")
             continue
 
