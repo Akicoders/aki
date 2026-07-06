@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 import typer
+import yaml
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -53,7 +54,13 @@ except ImportError:  # pragma: no cover - exercised only without `web` extras in
 from agentos.cockpit.audit.base import AuditContext, merge_findings, run_registered_passes
 from agentos.cockpit.audit.passes import PASS_REGISTRY
 from agentos.cockpit.audit.report import persist_audit
-from agentos.core.config import get_config, reset_config
+from agentos.core.config import (
+    _find_project_config_yaml,
+    _global_home,
+    get_config,
+    get_env_provenance,
+    reset_config,
+)
 from agentos.memory.models import EventType
 from agentos.skills.base import get_skill_registry
 from agentos.skills import load_skills
@@ -71,8 +78,10 @@ app = typer.Typer(
 )
 cockpit_app = typer.Typer(help="Open the operational cockpit for a project.")
 projects_app = typer.Typer(help="Browse projects when current context is unclear.")
+config_app = typer.Typer(help="Manage the global Aki config home (~/.aki/).")
 app.add_typer(cockpit_app, name="cockpit")
 app.add_typer(projects_app, name="projects")
+app.add_typer(config_app, name="config")
 console = Console()
 logger = logging.getLogger(__name__)
 
@@ -152,11 +161,8 @@ def callback(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
 ):
     """Aki is an AI agent with persistent cross-session project memory."""
-    if config_path is None and Path("config.yaml").exists():
-        config_path = Path("config.yaml")
-    if config_path:
-        reset_config()
-        get_config(config_path)
+    reset_config()
+    get_config(config_path)
     if verbose:
         import logging
         logging.basicConfig(level=logging.DEBUG)
@@ -339,17 +345,88 @@ def mcp_setup(
     console.print(f"[green]✓[/green] Aki MCP config added to {config_path}")
 
 
-def _resolve_global_api_key() -> tuple[str, str]:
-    """Resolve the Qwen API key from process environment (CWD-independent).
+def _is_real_key(candidate: str) -> bool:
+    candidate = candidate.strip()
+    return bool(candidate) and not candidate.startswith("your_")
 
-    Returns (key, detail). Precedence: QWEN_API_KEY then DASHSCOPE_API_KEY.
-    Placeholder values (empty or prefixed with "your_") are ignored.
+
+def _resolve_global_api_key() -> tuple[str, str]:
+    """Resolve the Qwen API key: process env -> ~/.aki/.env -> project .env.
+
+    Returns (key, detail). Precedence per var source: QWEN_API_KEY then
+    DASHSCOPE_API_KEY. Placeholder values (empty or prefixed with "your_")
+    are ignored. The detail never contains the key value.
+
+    NOTE: the Typer callback always calls resolve_config()/get_config() before
+    any command body runs, which loads project/global .env files via
+    load_dotenv(override=False) — this WRITES previously-unset keys into
+    os.environ as a side effect even though override=False. So a key that
+    lives only in ~/.aki/.env (never exported by the user's shell) shows up
+    in os.environ by the time this function runs. We consult
+    get_env_provenance()'s "real" snapshot (captured BEFORE any dotenv load
+    in the most recent resolve_config() call) to tell a genuine shell env var
+    apart from one merely populated by dotenv loading, so the reported source
+    label is accurate.
     """
+    from dotenv import dotenv_values
+
+    provenance = get_env_provenance()
+    real_keys = provenance["real"] if provenance is not None else None
+    dotenv_keys = (
+        (provenance["project"] | provenance["global"]) if provenance is not None else frozenset()
+    )
+
     for var_name in ("QWEN_API_KEY", "DASHSCOPE_API_KEY"):
-        candidate = os.environ.get(var_name, "").strip()
-        if candidate and not candidate.startswith("your_"):
-            return candidate, f"{var_name} set"
-    return "", "not set (set QWEN_API_KEY or DASHSCOPE_API_KEY)"
+        candidate = os.environ.get(var_name, "")
+        if not _is_real_key(candidate):
+            continue
+        # Provenance can go stale relative to the *current* os.environ (e.g. a
+        # caller mutates os.environ after the last resolve_config() call, or
+        # calls this function directly without ever calling resolve_config()
+        # in this process). We must not let a stale snapshot cause us to
+        # silently drop a genuinely real key, so the unsafe direction (real
+        # key -> reported as absent) is avoided: a var only gets treated as
+        # dotenv-sourced when it is positively known to have been written by
+        # a project/global .env load in the most recent resolve_config()
+        # call. If the snapshot doesn't know about this var at all (no
+        # provenance captured yet, or the var predates/postdates that
+        # snapshot), we default to trusting it as a real shell env var
+        # instead of guessing it came from a file.
+        if real_keys is not None and var_name not in real_keys and var_name in dotenv_keys:
+            # Positively known to have been written into os.environ only by
+            # dotenv loading in the most recent resolve_config() call. Fall
+            # through to file-based checks below so the source is
+            # attributed correctly.
+            continue
+        return candidate.strip(), f"{var_name} set in shell env"
+
+    global_env_path = _global_home() / ".env"
+    if global_env_path.is_file():
+        values = dotenv_values(global_env_path)
+        for var_name in ("QWEN_API_KEY", "DASHSCOPE_API_KEY"):
+            candidate = values.get(var_name) or ""
+            if _is_real_key(candidate):
+                return candidate.strip(), f"found in {global_env_path}"
+
+    project_env_path = _find_project_env_path()
+    if project_env_path is not None:
+        values = dotenv_values(project_env_path)
+        for var_name in ("QWEN_API_KEY", "DASHSCOPE_API_KEY"):
+            candidate = values.get(var_name) or ""
+            if _is_real_key(candidate):
+                return candidate.strip(), f"found in {project_env_path}"
+
+    return "", "not set (set QWEN_API_KEY or DASHSCOPE_API_KEY, or run `aki config init`)"
+
+
+def _find_project_env_path() -> Optional[Path]:
+    from agentos.core.config import _iter_env_search_roots
+
+    for root in _iter_env_search_roots():
+        candidate = root / ".env"
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 @app.command()
@@ -418,6 +495,85 @@ def doctor():
             "[dim]Project context not detected "
             "(run inside the Aki repo for project checks — see `aki audit`).[/dim]"
         )
+
+    project_config_path = _find_project_config_yaml()
+    if project_config_path is not None:
+        console.print(f"[dim]Project-local config detected: {project_config_path}[/dim]")
+
+
+@config_app.command("init")
+def config_init(
+    qwen_api_key: Optional[str] = typer.Option(None, "--qwen-api-key", help="Qwen Cloud API key"),
+    dashscope_api_key: Optional[str] = typer.Option(None, "--dashscope-api-key", help="DashScope API key"),
+    model: Optional[str] = typer.Option(None, "--model", help="Default Qwen model"),
+    embedding_model: Optional[str] = typer.Option(None, "--embedding-model", help="Default embedding model"),
+    base_url: Optional[str] = typer.Option(None, "--base-url", help="Qwen-compatible API base URL"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would happen without writing files"),
+):
+    """Bootstrap the global Aki config home at ~/.aki/ (.env + config.yaml)."""
+    home = _global_home()
+
+    if qwen_api_key is None and dashscope_api_key is None:
+        if sys.stdin.isatty():
+            qwen_api_key = Prompt.ask("Qwen API key (QWEN_API_KEY)", default="")
+        else:
+            console.print(
+                "[red]Missing required value: --qwen-api-key (or --dashscope-api-key), "
+                "and stdin is not interactive.[/red]"
+            )
+            raise typer.Exit(1)
+
+    env_lines: list[str] = []
+    if qwen_api_key:
+        env_lines.append(f"QWEN_API_KEY={qwen_api_key}")
+    if dashscope_api_key:
+        env_lines.append(f"DASHSCOPE_API_KEY={dashscope_api_key}")
+
+    yaml_data: dict = {}
+    qwen_yaml: dict = {}
+    if model:
+        qwen_yaml["model"] = model
+    if embedding_model:
+        qwen_yaml["embedding_model"] = embedding_model
+    if base_url:
+        qwen_yaml["base_url"] = base_url
+    if qwen_yaml:
+        yaml_data["qwen"] = qwen_yaml
+
+    env_path = home / ".env"
+    yaml_path = home / "config.yaml"
+
+    if dry_run:
+        console.print(f"[bold]Dry run — global config home: {home}[/bold]")
+        if env_lines:
+            console.print(f"Would write {env_path}:")
+            console.print("\n".join(env_lines))
+        if yaml_data:
+            console.print(f"Would write {yaml_path}:")
+            console.print(yaml.safe_dump(yaml_data, default_flow_style=False))
+        return
+
+    home.mkdir(parents=True, exist_ok=True)
+
+    if env_lines:
+        if env_path.exists():
+            timestamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+            backup_path = env_path.parent / f".env.backup.{timestamp}"
+            shutil.copy2(env_path, backup_path)
+            console.print(f"[green]✓[/green] Backup created: {backup_path}")
+        env_path.write_text("\n".join(env_lines) + "\n", encoding="utf-8")
+        console.print(f"[green]✓[/green] Wrote {env_path}")
+
+    if yaml_data:
+        if yaml_path.exists():
+            timestamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+            backup_path = yaml_path.with_suffix(f".backup.{timestamp}")
+            shutil.copy2(yaml_path, backup_path)
+            console.print(f"[green]✓[/green] Backup created: {backup_path}")
+        yaml_path.write_text(yaml.safe_dump(yaml_data, default_flow_style=False), encoding="utf-8")
+        console.print(f"[green]✓[/green] Wrote {yaml_path}")
+
+    console.print(f"[green]✓[/green] Global config initialized at {home}")
 
 
 @app.command()

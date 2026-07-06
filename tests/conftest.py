@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from agentos.core.config import reset_config
+from agentos.core.config import reset_config, reset_env_provenance
 from agentos.memory.database import get_database, reset_database
 from agentos.memory.repository import MemoryRepository, reset_embedder_cache
 
@@ -28,10 +28,12 @@ def reset_globals():
     """Reset global state before each test."""
     reset_database()
     reset_config()
+    reset_env_provenance()
     reset_embedder_cache()
     yield
     reset_database()
     reset_config()
+    reset_env_provenance()
     reset_embedder_cache()
 
 
