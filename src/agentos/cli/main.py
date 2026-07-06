@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import shutil
+import os
 import sys
 from contextlib import nullcontext
 from datetime import datetime
@@ -72,6 +74,7 @@ projects_app = typer.Typer(help="Browse projects when current context is unclear
 app.add_typer(cockpit_app, name="cockpit")
 app.add_typer(projects_app, name="projects")
 console = Console()
+logger = logging.getLogger(__name__)
 
 
 def _format_status(message: str) -> str:
@@ -336,9 +339,22 @@ def mcp_setup(
     console.print(f"[green]✓[/green] Aki MCP config added to {config_path}")
 
 
+def _resolve_global_api_key() -> tuple[str, str]:
+    """Resolve the Qwen API key from process environment (CWD-independent).
+
+    Returns (key, detail). Precedence: QWEN_API_KEY then DASHSCOPE_API_KEY.
+    Placeholder values (empty or prefixed with "your_") are ignored.
+    """
+    for var_name in ("QWEN_API_KEY", "DASHSCOPE_API_KEY"):
+        candidate = os.environ.get(var_name, "").strip()
+        if candidate and not candidate.startswith("your_"):
+            return candidate, f"{var_name} set"
+    return "", "not set (set QWEN_API_KEY or DASHSCOPE_API_KEY)"
+
+
 @app.command()
 def doctor():
-    """Check Aki installation health."""
+    """Check Aki installation health (global-only; independent of CWD)."""
     checks: list[tuple[str, bool, str]] = []
 
     py_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
@@ -347,22 +363,6 @@ def doctor():
 
     uv_ok = shutil.which("uv") is not None
     checks.append(("uv installed", uv_ok, shutil.which("uv") or "not found"))
-
-    env_path = Path(".env")
-    env_ok = env_path.exists()
-    env_detail = str(env_path) if env_ok else "not found"
-    if env_ok:
-        env_text = env_path.read_text(encoding="utf-8")
-        has_qwen = "QWEN_API_KEY=" in env_text and "QWEN_API_KEY=your_" not in env_text
-        has_dashscope = "DASHSCOPE_API_KEY=" in env_text and "DASHSCOPE_API_KEY=your_" not in env_text
-        has_key = has_qwen or has_dashscope
-        detail = "QWEN_API_KEY set" if has_qwen else ("DASHSCOPE_API_KEY set" if has_dashscope else "placeholder or missing")
-        checks.append(("API key set", has_key, detail))
-    else:
-        checks.append(("QWEN_API_KEY set", False, "no .env file"))
-
-    lock_ok = Path("uv.lock").exists()
-    checks.append(("uv.lock exists", lock_ok, "uv.lock" if lock_ok else "not found"))
 
     import_ok = False
     import_detail = ""
@@ -375,41 +375,23 @@ def doctor():
         import_detail = str(e)
     checks.append(("Import agentos", import_ok, import_detail))
 
-    if py_ok and env_ok:
+    key, key_detail = _resolve_global_api_key()
+    checks.append(("API key configured", bool(key), key_detail))
+
+    if py_ok and key:
         api_ok = False
         api_detail = "skipped"
         try:
-            env_text = env_path.read_text(encoding="utf-8")
-            key = ""
-            for line in env_text.splitlines():
-                if line.startswith("QWEN_API_KEY="):
-                    candidate = line.split("=", 1)[1].strip()
-                    if candidate and not candidate.startswith("your_"):
-                        key = candidate
-                    break
-            if not key:
-                for line in env_text.splitlines():
-                    if line.startswith("DASHSCOPE_API_KEY="):
-                        candidate = line.split("=", 1)[1].strip()
-                        if candidate and not candidate.startswith("your_"):
-                            key = candidate
-                        break
-            if key:
-                import httpx
-                base_url = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
-                for line2 in env_text.splitlines():
-                    if line2.startswith("QWEN_BASE_URL="):
-                        base_url = line2.split("=", 1)[1].strip()
-                        break
-                resp = httpx.get(
-                    f"{base_url}/models",
-                    headers={"Authorization": f"Bearer {key}"},
-                    timeout=10,
-                )
-                api_ok = resp.status_code == 200
-                api_detail = f"HTTP {resp.status_code}"
-            else:
-                api_detail = "placeholder key"
+            import httpx
+
+            base_url = os.environ.get("QWEN_BASE_URL", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1")
+            resp = httpx.get(
+                f"{base_url}/models",
+                headers={"Authorization": f"Bearer {key}"},
+                timeout=10,
+            )
+            api_ok = resp.status_code == 200
+            api_detail = f"HTTP {resp.status_code}"
         except Exception as e:
             api_detail = str(e)
         checks.append(("Qwen API reachable", api_ok, api_detail))
@@ -430,6 +412,12 @@ def doctor():
         console.print("\n[green]All checks passed.[/green]")
     else:
         console.print("\n[yellow]Some checks failed. See above for details.[/yellow]")
+
+    if not Path("uv.lock").exists():
+        console.print(
+            "[dim]Project context not detected "
+            "(run inside the Aki repo for project checks — see `aki audit`).[/dim]"
+        )
 
 
 @app.command()
@@ -819,6 +807,11 @@ async def _async_interactive(agent, project, session_id, profile_id: Optional[st
             break
         except EOFError:
             break
+        except Exception as exc:
+            logger.exception("Interactive turn failed")
+            console.print(f"[red]Turn failed:[/red] {exc}")
+            console.print("[dim]Tip: run `aki sdd-init` to structure this as a spec-driven change.[/dim]")
+            continue
 
 
 @app.command()
@@ -840,13 +833,39 @@ def remember(
 
 @app.command()
 def recall(
-    query: str = typer.Argument(..., help="Search query"),
+    query: Optional[str] = typer.Argument(None, help="Search query"),
+    event_id: Optional[str] = typer.Option(None, "--id", help="Fetch one event by exact ID"),
     project: Optional[str] = typer.Option(None, "--project", "-p", help="Project name"),
     limit: int = typer.Option(10, "--limit", "-l", help="Max results"),
 ):
-    """Search memory."""
-    project = detect_project(project)
+    """Search memory, or fetch a single event by exact ID with --id."""
+    if event_id and query:
+        console.print("[red]--id and a free-text query are mutually exclusive[/red]")
+        raise typer.Exit(1)
+
     agent = _get_agent()
+
+    if event_id:
+        async def run_by_id():
+            event = await asyncio.to_thread(agent.memory.get_event, event_id)
+            if event is None:
+                console.print(f"[yellow]No event with id {event_id}[/yellow]")
+                raise typer.Exit(1)
+            console.print(f"Event {event.id}")
+            console.print(
+                f"  time: {event.timestamp}  type: {event.type.value}  "
+                f"project: {event.project}  source: {event.source}"
+            )
+            console.print(f"  {event.content}")
+
+        asyncio.run(run_by_id())
+        return
+
+    if not query:
+        console.print("[red]Provide a search query or --id[/red]")
+        raise typer.Exit(1)
+
+    project = detect_project(project)
 
     async def run():
         context = await agent.recall(query, project)

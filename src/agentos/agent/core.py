@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from dataclasses import dataclass
@@ -803,14 +804,14 @@ class AgentOS:
         meta: Optional[dict] = None,
     ) -> MemoryEvent:
         """Explicitly store a memory."""
-        event = create_event(
+        event = MemoryEvent(
             type=type,
             project=project,
             content=content,
             meta=meta or {},
             source="user",
         )
-        return event
+        return await asyncio.to_thread(self.memory.add_event, event)
 
     async def recall(self, query: str, project: str = "default") -> MemoryContext:
         """Query memory directly."""
