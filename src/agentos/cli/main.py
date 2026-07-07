@@ -996,7 +996,7 @@ async def _async_interactive(agent, project, session_id, profile_id: Optional[st
             try:
                 fired = await run_task_dispatcher(repo, print_callback=lambda msg: console.print(f"\n{msg}"))
                 if fired > 0:
-                    console.print("[bold green]You[/bold green]: ", end="", flush=True)
+                    console.print("[bold green]You[/bold green]: ", end="")
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -1036,9 +1036,9 @@ async def _async_interactive(agent, project, session_id, profile_id: Optional[st
                             if not started_printing:
                                 if hasattr(status, "stop"):
                                     status.stop()
-                                console.print("[bold cyan]Agent:[/bold cyan] ", end="", flush=True)
+                                console.print("[bold cyan]Agent:[/bold cyan] ", end="")
                                 started_printing = True
-                            console.print(token, end="", flush=True)
+                            console.print(token, end="")
 
                         if started_printing:
                             console.print()

@@ -109,7 +109,7 @@ class SentenceTransformerEmbedder:
         self.model = _get_sentence_transformer(model_name)
 
     def embed(self, text: str) -> list[float]:
-        return self.model.encode(text, normalize_embeddings=True).tolist()
+        return self.model.encode(text, normalize_embeddings=True, show_progress_bar=False).tolist()
 
 
 def _create_sentence_transformer(model_name: str):
