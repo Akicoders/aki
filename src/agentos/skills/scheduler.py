@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import json
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any, Optional, Callable
 from uuid import uuid4
 from croniter import croniter
 
