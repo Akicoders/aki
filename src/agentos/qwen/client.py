@@ -91,6 +91,7 @@ class QwenClient:
         stream: bool = False,
         model: str | None = None,
         status_callback: Optional[Callable[[str], None]] = None,
+        token_callback: Optional[Callable[[str], None]] = None,
     ) -> ChatResponse | AsyncGenerator[str, None]:
         """Chat completion with optional function calling."""
         if stream:
