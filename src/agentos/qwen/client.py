@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator, Literal, Optional, cast
+from typing import Any, AsyncGenerator, Callable, Literal, Optional, cast
 
 import httpx
 from openai import AsyncOpenAI
@@ -15,6 +15,22 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 from agentos.core.config import get_config, QwenConfig
 
 logger = logging.getLogger(__name__)
+
+
+def _before_sleep_callback(retry_state):
+    """Notify connection attempts to the UI status callback if present."""
+    status_callback = retry_state.kwargs.get("status_callback")
+    attempt = retry_state.attempt_number
+    exc = retry_state.outcome.exception()
+
+    msg = f"⚠️ Conexión lenta. Reintentando llamada a Qwen (intento {attempt + 1})..."
+    if exc:
+        msg = f"⚡ Error de red ({type(exc).__name__}). Reintentando llamada a Qwen (intento {attempt + 1})..."
+
+    if status_callback:
+        status_callback(msg)
+    else:
+        logger.warning(msg)
 
 
 @dataclass
@@ -63,6 +79,7 @@ class QwenClient:
         wait=wait_exponential(multiplier=1, min=2, max=10),
         stop=stop_after_attempt(3),
         retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError)),
+        before_sleep=_before_sleep_callback,
     )
     async def chat(
         self,
@@ -73,10 +90,83 @@ class QwenClient:
         max_tokens: Optional[int] = None,
         stream: bool = False,
         model: str | None = None,
+        status_callback: Optional[Callable[[str], None]] = None,
     ) -> ChatResponse | AsyncGenerator[str, None]:
         """Chat completion with optional function calling."""
         if stream:
             return self._chat_stream(messages, tools, tool_choice, temperature, max_tokens)
+
+        if token_callback is not None:
+            api_stream = await self.client.chat.completions.create(
+                model=model or self.config.model,
+                messages=messages,
+                tools=tools,
+                tool_choice=tool_choice,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream=True,
+            )
+
+            accumulated_content = []
+            tool_calls_map = {}
+            finish_reason = "stop"
+            response_model = model or self.config.model
+
+            async for chunk in api_stream:
+                if chunk.model:
+                    response_model = chunk.model
+                if not chunk.choices:
+                    continue
+                choice = chunk.choices[0]
+                if choice.finish_reason:
+                    finish_reason = choice.finish_reason
+                delta = choice.delta
+                if delta.content:
+                    accumulated_content.append(delta.content)
+                    token_callback(delta.content)
+                if delta.tool_calls:
+                    for tc in delta.tool_calls:
+                        idx = tc.index
+                        if idx not in tool_calls_map:
+                            tool_calls_map[idx] = {
+                                "id": tc.id or "",
+                                "type": tc.type or "function",
+                                "function": {"name": "", "arguments": ""}
+                            }
+                        if tc.id:
+                            tool_calls_map[idx]["id"] = tc.id
+                        if tc.type:
+                            tool_calls_map[idx]["type"] = tc.type
+                        if tc.function:
+                            if tc.function.name:
+                                tool_calls_map[idx]["function"]["name"] += tc.function.name
+                            if tc.function.arguments:
+                                tool_calls_map[idx]["function"]["arguments"] += tc.function.arguments
+
+            tool_calls = []
+            for idx in sorted(tool_calls_map.keys()):
+                tc_data = tool_calls_map[idx]
+                args_str = tc_data["function"]["arguments"]
+                try:
+                    args = json.loads(args_str) if args_str else {}
+                except json.JSONDecodeError:
+                    args = args_str
+                tool_calls.append({
+                    "id": tc_data["id"],
+                    "type": tc_data["type"],
+                    "function": {
+                        "name": tc_data["function"]["name"],
+                        "arguments": args,
+                    }
+                })
+
+            return ChatResponse(
+                content="".join(accumulated_content),
+                tool_calls=tool_calls,
+                usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                model=response_model,
+                finish_reason=finish_reason,
+            )
 
         response = await self.client.chat.completions.create(
             model=model or self.config.model,
@@ -175,6 +265,7 @@ class QwenClient:
         wait=wait_exponential(multiplier=1, min=2, max=10),
         stop=stop_after_attempt(3),
         retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError)),
+        before_sleep=_before_sleep_callback,
     )
     async def embed(self, texts: list[str]) -> EmbeddingResponse:
         """Generate embeddings for texts."""

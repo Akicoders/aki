@@ -73,8 +73,10 @@ class FakeAgent:
         profile_id=None,
     ):
         self.chat_calls.append({"profile_id": profile_id, "stream": True})
+        self.chat_status_callbacks.append(status_callback)
         if status_callback is not None:
             status_callback("📚 Collecting project context")
+            status_callback("🧠 Thinking — iteration 1/3")
         yield "hola "
 
 
@@ -191,7 +193,7 @@ def test_interactive_passes_selected_profile_for_each_prompt(monkeypatch):
         cli_main._async_interactive(fake_agent, "default", "session-1", profile_id="reviewer")
     )
 
-    assert fake_agent.chat_calls == [{"profile_id": "reviewer"}]
+    assert fake_agent.chat_calls == [{"profile_id": "reviewer", "stream": True}]
 
 
 def test_interactive_command_accepts_selected_profile_and_prints_header(monkeypatch):

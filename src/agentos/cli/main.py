@@ -86,14 +86,23 @@ console = Console()
 logger = logging.getLogger(__name__)
 
 
+class LazyFileHandler(logging.FileHandler):
+    """FileHandler that delays directory and file creation until the first write."""
+    def __init__(self, filename: Path | str, mode: str = "a", encoding: Optional[str] = "utf-8", delay: bool = True):
+        super().__init__(filename, mode, encoding, delay=True)
+
+    def _open(self):
+        Path(self.baseFilename).parent.mkdir(parents=True, exist_ok=True)
+        return super()._open()
+
+
 def _configure_logging(verbose: bool) -> None:
     """Route logs to a file by default so tracebacks never leak to the terminal."""
     root = logging.getLogger()
     root.setLevel(logging.DEBUG if verbose else logging.INFO)
 
     log_dir = _global_home() / "logs"
-    log_dir.mkdir(parents=True, exist_ok=True)
-    file_handler = logging.FileHandler(log_dir / "aki.log")
+    file_handler = LazyFileHandler(log_dir / "aki.log", encoding="utf-8")
     file_handler.setFormatter(
         logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
     )
@@ -985,14 +994,41 @@ async def _async_interactive(agent, project, session_id, profile_id: Optional[st
                 def update_status(message: str) -> None:
                     status.update(_format_status(message))
 
-                response = await agent.chat(
+                stream = agent.stream_chat(
                     user_input,
                     project,
                     session_id,
                     status_callback=update_status,
                     profile_id=profile_id,
                 )
-            console.print(Markdown(f"**Agent:** {response}"))
+
+                if hasattr(stream, "__aiter__"):
+                    started_printing = False
+                    async for token in stream:
+                        if not started_printing:
+                            if hasattr(status, "stop"):
+                                status.stop()
+                            console.print("[bold cyan]Agent:[/bold cyan] ", end="", flush=True)
+                            started_printing = True
+                        console.print(token, end="", flush=True)
+
+                    if started_printing:
+                        console.print()
+                    else:
+                        if hasattr(status, "stop"):
+                            status.stop()
+                        console.print("[bold cyan]Agent:[/bold cyan] (sin respuesta)")
+                else:
+                    if hasattr(status, "stop"):
+                        status.stop()
+                    response = await agent.chat(
+                        user_input,
+                        project,
+                        session_id,
+                        status_callback=update_status,
+                        profile_id=profile_id,
+                    )
+                    console.print(Markdown(f"**Agent:** {response}"))
 
         except KeyboardInterrupt:
             console.print("\n[dim]Interrupted[/dim]")

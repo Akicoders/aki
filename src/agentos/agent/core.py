@@ -300,6 +300,7 @@ class AgentOS:
         stream: bool = False,
         status_callback: Optional[StatusCallback] = None,
         profile_id: Optional[str] = None,
+        token_callback: Optional[Callable[[str], None]] = None,
     ) -> str:
         """Main chat entry point."""
         if not session_id:
@@ -359,6 +360,7 @@ class AgentOS:
                 session_id,
                 status_callback=status_callback,
                 profile=profile,
+                token_callback=token_callback,
             )
         response = outcome.response
 
@@ -503,6 +505,7 @@ class AgentOS:
         status_callback: Optional[StatusCallback] = None,
         profile: Optional[AgentProfile] = None,
         depth: int = 0,
+        token_callback: Optional[Callable[[str], None]] = None,
     ) -> ReasoningOutcome:
         """Execute reasoning loop with tool calls.
 
@@ -540,6 +543,8 @@ class AgentOS:
                 tools=tools,
                 tool_choice="auto",
                 temperature=temperature,
+                status_callback=status_callback,
+                token_callback=token_callback,
                 **({"model": profile.model} if profile and profile.model else {}),
             )
 
@@ -783,16 +788,39 @@ class AgentOS:
         status_callback: Optional[StatusCallback] = None,
         profile_id: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
-        """Stream chat response (not fully implemented with tools yet)."""
-        response = await self.chat(
-            user_input,
-            project,
-            session_id,
-            status_callback=status_callback,
-            profile_id=profile_id,
-        )
-        for chunk in response.split():
-            yield chunk + " "
+        """Stream chat response in real time."""
+        queue: asyncio.Queue[Optional[str]] = asyncio.Queue()
+        tokens_emitted = 0
+
+        def token_callback(token: str) -> None:
+            nonlocal tokens_emitted
+            tokens_emitted += 1
+            queue.put_nowait(token)
+
+        async def run_chat():
+            try:
+                res = await self.chat(
+                    user_input,
+                    project,
+                    session_id,
+                    status_callback=status_callback,
+                    profile_id=profile_id,
+                    token_callback=token_callback,
+                )
+                if tokens_emitted == 0 and res:
+                    queue.put_nowait(res)
+            finally:
+                queue.put_nowait(None)
+
+        task = asyncio.create_task(run_chat())
+
+        while True:
+            token = await queue.get()
+            if token is None:
+                break
+            yield token
+
+        await task
 
     # --- Memory shortcuts ---
 
