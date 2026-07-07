@@ -45,3 +45,75 @@ class TestLastSessionHelpers:
 
         assert memory_repo.get_last_session("demo") == "sess_bbbbbbbb"
         assert _count_facts(memory_repo, "session:last", "project:demo") == 1
+
+
+class TestSessionConversation:
+    """Validate session conversation history retrieval and older session context integration."""
+
+    def test_get_session_conversation_retrieves_ordered_history(self, memory_repo):
+        from datetime import datetime, timedelta
+        from agentos.memory.models import MemoryEvent, EventType
+
+        session_id = "sess_history123"
+        project = "demo"
+
+        # Create two conversation events with distinct timestamps
+        evt1 = MemoryEvent(
+            type=EventType.CONVERSATION,
+            project=project,
+            content="Hello agent",
+            source="user",
+            session_id=session_id,
+            timestamp=datetime.utcnow() - timedelta(minutes=10)
+        )
+        evt2 = MemoryEvent(
+            type=EventType.CONVERSATION,
+            project=project,
+            content="Hello user",
+            source="agent",
+            session_id=session_id,
+            timestamp=datetime.utcnow() - timedelta(minutes=5)
+        )
+        # Event from a different session
+        evt_diff = MemoryEvent(
+            type=EventType.CONVERSATION,
+            project=project,
+            content="Other session message",
+            source="user",
+            session_id="sess_different",
+            timestamp=datetime.utcnow()
+        )
+
+        memory_repo.add_event(evt1)
+        memory_repo.add_event(evt2)
+        memory_repo.add_event(evt_diff)
+
+        history = memory_repo.get_session_conversation(session_id)
+        assert len(history) == 2
+        assert history[0].content == "Hello agent"
+        assert history[1].content == "Hello user"
+
+    def test_assemble_context_includes_older_session_events(self, memory_repo):
+        from datetime import datetime, timedelta
+        from agentos.memory.models import MemoryEvent, EventType
+
+        session_id = "sess_old_context"
+        project = "demo"
+
+        # Create a conversation event older than 2 hours (e.g. 5 hours ago)
+        old_evt = MemoryEvent(
+            type=EventType.CONVERSATION,
+            project=project,
+            content="Durable decision context",
+            source="user",
+            session_id=session_id,
+            timestamp=datetime.utcnow() - timedelta(hours=5)
+        )
+        memory_repo.add_event(old_evt)
+
+        # Assemble context for this session
+        context = memory_repo.assemble_context(query="some query", project=project, session_id=session_id)
+
+        # Assert that the old event is indeed retrieved because it belongs to the session_id
+        session_event_contents = [e.content for e in context.events]
+        assert "Durable decision context" in session_event_contents

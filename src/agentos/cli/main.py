@@ -954,6 +954,17 @@ def _print_interactive_header(
     except Exception:
         pass
 
+    try:
+        events = agent.memory.get_session_conversation(session_id)
+        if events:
+            console.print("\n[bold cyan]— Session Conversation History —[/bold cyan]")
+            for event in events:
+                role = "[bold green]You:[/bold green]" if event.source == "user" else "[bold cyan]Agent:[/bold cyan]"
+                console.print(f"{role} {event.content}")
+            console.print("[bold cyan]———————————————————————————————[/bold cyan]\n")
+    except Exception as e:
+        logger.warning(f"Could not load session conversation history: {e}")
+
 
 @app.command("sdd-init")
 def sdd_init(

@@ -422,6 +422,23 @@ class MemoryRepository:
         data.setdefault("iterations_exhausted", False)
         return data
 
+    def get_session_conversation(self, session_id: str, limit: int = 50) -> list[MemoryEvent]:
+        """Retrieve historical conversation events for a specific session sorted by timestamp ascending."""
+        with self.db.session() as session:
+            stmt = (
+                select(MemoryEventModel)
+                .where(
+                    and_(
+                        MemoryEventModel.session_id == session_id,
+                        MemoryEventModel.type == EventType.CONVERSATION,
+                    )
+                )
+                .order_by(MemoryEventModel.timestamp.asc())
+                .limit(limit)
+            )
+            models = session.execute(stmt).scalars().all()
+            return [MemoryEvent.from_model(m) for m in models]
+
     def list_sessions(self, project: str, limit: int = 20) -> list[SessionSummary]:
         """Return a project's sessions derived from checkpoint facts, newest-first.
 
@@ -521,10 +538,7 @@ class MemoryRepository:
         if session_id:
             with self.db.session() as session:
                 stmt = select(MemoryEventModel).where(
-                    and_(
-                        MemoryEventModel.session_id == session_id,
-                        MemoryEventModel.timestamp >= datetime.utcnow() - timedelta(hours=2),
-                    )
+                    MemoryEventModel.session_id == session_id
                 ).order_by(MemoryEventModel.timestamp.desc()).limit(10)
                 models = session.execute(stmt).scalars().all()
                 session_events = [MemoryEvent.from_model(m) for m in models]
