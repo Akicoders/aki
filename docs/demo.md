@@ -1,6 +1,17 @@
-# Aki demo script
+# Aki evaluator walkthrough
 
-This walkthrough proves the MVP claim: Aki is an AI agent whose project memory changes coding-agent behavior across interactions.
+This walkthrough is designed for a hackathon judge, reviewer, or open-source evaluator.
+
+## What this demo proves
+
+By the end of the flow, you should have evidence that Aki is more than a memory toy:
+
+- it provides **durable project memory**;
+- it tracks **sessions and checkpoints**;
+- it exposes **operational posture** through cockpit and audit views;
+- it supports **specialized agent profiles**;
+- it is ready to **bootstrap into MCP hosts**;
+- it is aligned with **Qwen / DashScope** as a concrete Alibaba integration path.
 
 ## 0. Prepare the repository
 
@@ -9,7 +20,7 @@ uv sync --all-extras
 cp .env.example .env
 ```
 
-Optional for Qwen extraction:
+Optional for Qwen-powered extraction/explanations:
 
 ```bash
 export QWEN_API_KEY=your_qwen_api_key_here
@@ -19,143 +30,126 @@ export QWEN_EXTRACTION_MODEL=qwen3.7-plus
 export QWEN_CONSOLIDATION_MODEL=qwen3.7-max
 ```
 
-## 1. Start `aki mcp` as an OpenCode local MCP server
+## 1. Show the product entry point
 
-Generate the OpenCode snippet:
+```bash
+uv run aki
+```
+
+What to call out:
+
+- Aki opens as an **operational cockpit**, not just a raw CLI.
+- The view summarizes project health, action items, memory posture, and SDD status.
+- This positions Aki as a repo operating surface for AI agents.
+
+## 2. Show project audit
+
+```bash
+uv run aki audit aki
+```
+
+What to call out:
+
+- The audit is **read-only**.
+- It evaluates tests, SDD completeness, git hygiene, env/config, MCP readiness, and memory posture.
+- Reports are saved in `docs/audits/`, which is useful for async review and demo follow-up.
+
+## 3. Show specialized agent profiles
+
+```bash
+uv run aki agents
+```
+
+What to call out:
+
+- Profiles let the project define planner / builder / reviewer-style behavior.
+- Tool access and memory scope are configurable per profile.
+- This gives Aki a strong product story beyond “store some notes.”
+
+## 4. Show MCP bootstrap
+
+Generate host configuration:
 
 ```bash
 uv run aki mcp-config opencode
+uv run aki mcp-config claude-code
 ```
 
-Copy the JSON into OpenCode MCP configuration:
+Optional dry-run setup:
 
-```json
-{
-  "mcp": {
-    "aki_memory": {
-      "type": "local",
-      "command": ["uv", "run", "aki", "mcp"],
-      "enabled": true
-    }
-  }
-}
+```bash
+uv run aki mcp-setup opencode --dry-run
 ```
 
-Restart OpenCode from the repository root. The host should start `uv run aki mcp` over stdio.
+What to call out:
 
-## 2. Save a project decision
+- Aki is built around **stdio MCP**, which is the right interface for coding-agent hosts.
+- `mcp-setup` makes onboarding faster for demos and real use.
 
-Ask the coding agent to call `memory_save`:
+## 5. Show session continuity
 
-```text
-Save this decision in Aki memory for project aki:
-we use pnpm in this project.
+```bash
+uv run aki interactive --new-session
 ```
 
-Expected MCP call shape:
+Inside the interactive shell, show:
 
-```json
-{
-  "kind": "decision",
-  "title": "Package manager",
-  "content": "We use pnpm in this project.",
-  "project": "aki",
-  "confidence": 1.0
-}
-```
+- `/help`
+- `/sessions`
+- `/sdd`
 
-Expected result: `ok: true` with a stored memory item.
+What to call out:
 
-## 3. Extract structured memories from architecture prose
+- Aki keeps a durable `session:last` pointer and per-session checkpoints.
+- The session model is useful for long-running coding tasks, not only one-off prompts.
 
-With Qwen credentials configured, ask the agent to call `memory_extract`:
+## 6. Optional: show live memory behavior through MCP tools
 
-```text
-Extract durable memories for aki from this paragraph:
+If you have an MCP host connected, demonstrate this flow:
 
-The architecture uses a local stdio MCP server so coding hosts can attach without a REST API.
-Memory is persisted in SQLite for facts and events, with ChromaDB used for vector-backed event retrieval.
-The project decision is to keep WhatsApp, Telegram, voice, REST, and multi-user features out of the MVP.
-Agents should call memory_context before editing and memory_save after important decisions or bug fixes.
-```
+1. save a decision such as “we use pnpm”; 
+2. query memory before asking for install guidance; 
+3. show that the answer changes because the agent consulted project memory first.
 
-Expected result: Qwen returns structured candidates grouped as facts, decisions, and procedures; the handler stores them and returns a refreshed memory capsule.
-
-## 4. Query `memory_context` and show behavior change
-
-Now ask the coding agent:
+Suggested prompt:
 
 ```text
 Before suggesting install commands for this repository, read project memory.
 How should dependencies be installed?
 ```
 
-Expected MCP call:
+What to call out:
 
-```json
-{
-  "project": "aki",
-  "query": "install dependencies package manager",
-  "limit": 10
-}
-```
+- Without memory, an agent may guess.
+- With Aki, the answer is shaped by stored project context.
+- That behavior change is the core product proof.
 
-Expected behavior change:
+## 7. Optional: show Qwen / Alibaba alignment
 
-- Without memory, the agent may suggest `npm install`, `pip install`, or generic commands.
-- With memory, the agent should mention the stored decision: `pnpm` is the chosen package manager for this project.
-
-This is the demo moment: the answer changes because the agent consulted durable project memory instead of guessing from the prompt alone.
-
-## 5. Fallback path when Qwen credentials are absent
-
-Unset Qwen credentials:
-
-```bash
-unset QWEN_API_KEY
-```
-
-Then run the same project with manual memory operations:
+Call out the default endpoint in config and docs:
 
 ```text
-Save a decision: The MVP runtime is local MCP stdio, not HTTP.
-Search memory for: runtime MCP HTTP.
-Read memory_context for: runtime path.
+https://dashscope-intl.aliyuncs.com/compatible-mode/v1
 ```
 
-Expected fallback behavior:
+What to say:
 
-- `memory_save` works because it does not require Qwen.
-- `memory_search` works against stored facts/events.
-- `memory_context` returns a memory capsule.
-- `memory_explain` can still produce deterministic keyword explanations and include the Qwen error in `errors`.
-- `memory_extract` reports a clear Qwen extraction failure; use `memory_save` to store important items manually.
+> Aki is open source and local-first, but its cloud-assisted extraction path is already aligned with Qwen through DashScope-compatible configuration.
 
-## Optional direct smoke test outside a host
+## Fast review path
+
+If a reviewer only has 90 seconds, use this sequence:
 
 ```bash
-uv run python - <<'PY'
-from pathlib import Path
-from tempfile import TemporaryDirectory
-
-from agentos.mcp.tools import MemoryToolHandlers
-from agentos.memory.repository import MemoryRepository
-
-class FakeEmbedder:
-    def embed(self, text: str) -> list[float]:
-        return [1.0, 0.0, 0.0]
-
-with TemporaryDirectory() as tmp:
-    repo = MemoryRepository(
-        db_path=Path(tmp) / "agentos.db",
-        chroma_path=Path(tmp) / "chroma_db",
-        embedder=FakeEmbedder(),
-    )
-    handlers = MemoryToolHandlers(repository=repo, qwen_client=None)
-    print(handlers.memory_context(project="demo", query="package manager"))
-    print(handlers.memory_save("decision", "Package manager", "We use pnpm.", project="demo"))
-    print(handlers.memory_search("pnpm", project="demo"))
-PY
+uv run aki
+uv run aki audit aki
+uv run aki agents
+uv run aki mcp-config opencode
 ```
 
-The final `memory_search` output should include the saved `Package manager` decision.
+## Supporting docs
+
+- [`README.md`](../README.md)
+- [`docs/integration.md`](integration.md)
+- [`docs/agent-profiles.md`](agent-profiles.md)
+- [`docs/demo-script.md`](demo-script.md)

@@ -21,13 +21,14 @@ def test_mcp_server_exposes_five_tool_schemas(memory_repo):
     assert sorted(list_tool_names()) == sorted(tool.name for tool in tools)
 
 
-def test_memory_context_returns_capsule(memory_repo):
+@pytest.mark.asyncio
+async def test_memory_context_returns_capsule(memory_repo):
     memory_repo.upsert_fact(
         MemoryFact(key="package_manager", value="uv", scope="project:demo", confidence=0.9)
     )
     handlers = MemoryToolHandlers(repository=memory_repo)
 
-    response = handlers.memory_context(project="demo", query="package", limit=5)
+    response = await handlers.memory_context(project="demo", query="package", limit=5)
 
     assert response["ok"] is True
     assert response["project"] == "demo"
@@ -36,14 +37,15 @@ def test_memory_context_returns_capsule(memory_repo):
     assert "uv" in response["capsule"]["rendered"]
 
 
-def test_memory_search_returns_ranked_facts_and_events(memory_repo):
+@pytest.mark.asyncio
+async def test_memory_search_returns_ranked_facts_and_events(memory_repo):
     memory_repo.upsert_fact(MemoryFact(key="runtime", value="Python 3.11", scope="project:demo"))
     memory_repo.add_event(
         MemoryEvent(type=EventType.DECISION, project="demo", content="Use stdio MCP server")
     )
     handlers = MemoryToolHandlers(repository=memory_repo)
 
-    response = handlers.memory_search(query="Python", project="demo", limit=10)
+    response = await handlers.memory_search(query="Python", project="demo", limit=10)
 
     assert response["ok"] is True
     assert response["project"] == "demo"
@@ -57,10 +59,11 @@ def test_memory_search_returns_ranked_facts_and_events(memory_repo):
     ("kind", "stored_kind"),
     [("fact", "fact"), ("decision", "decision"), ("procedure", "procedure")],
 )
-def test_memory_save_persists_supported_kinds(memory_repo, kind, stored_kind):
+@pytest.mark.asyncio
+async def test_memory_save_persists_supported_kinds(memory_repo, kind, stored_kind):
     handlers = MemoryToolHandlers(repository=memory_repo)
 
-    response = handlers.memory_save(
+    response = await handlers.memory_save(
         kind=kind,
         title="Run checks",
         content="Run uv run pytest tests/ -q",
@@ -75,10 +78,11 @@ def test_memory_save_persists_supported_kinds(memory_repo, kind, stored_kind):
     assert response["memory"]["title"] == "Run checks"
 
 
-def test_memory_save_rejects_invalid_kind_without_write(memory_repo):
+@pytest.mark.asyncio
+async def test_memory_save_rejects_invalid_kind_without_write(memory_repo):
     handlers = MemoryToolHandlers(repository=memory_repo)
 
-    response = handlers.memory_save(
+    response = await handlers.memory_save(
         kind="preference",
         title="Theme",
         content="Use dark mode",
@@ -91,15 +95,16 @@ def test_memory_save_rejects_invalid_kind_without_write(memory_repo):
     assert memory_repo.search_facts("Theme", scope="project:demo") == []
 
 
-def test_qwen_dependent_tools_return_graceful_errors(memory_repo):
+@pytest.mark.asyncio
+async def test_qwen_dependent_tools_return_graceful_errors(memory_repo):
     class FailingQwen:
         async def structured_json(self, prompt: str, **kwargs):
             raise RuntimeError("qwen unavailable")
 
     handlers = MemoryToolHandlers(repository=memory_repo, qwen_client=FailingQwen())
 
-    extract = handlers.memory_extract(text="Decision: use MCP", project="demo")
-    explain = handlers.memory_explain(query="MCP", project="demo")
+    extract = await handlers.memory_extract(text="Decision: use MCP", project="demo")
+    explain = await handlers.memory_explain(query="MCP", project="demo")
 
     assert extract == {
         "ok": False,

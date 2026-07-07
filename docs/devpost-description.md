@@ -1,89 +1,102 @@
-# Aki: Portable Project Memory for AI Coding Agents
+# Aki: Persistent Project Memory for AI Coding Agents
 
 ## Tagline
 
-AI agents that remember your project decisions and apply them automatically.
+Persistent memory, session continuity, and repo-aware operations for AI coding agents.
 
 ## Problem
 
-Every time you start a new session with an AI coding assistant, it forgets everything. Your package manager choice, your architecture decisions, your setup procedures — gone. You repeat yourself constantly, and the agent makes the same mistakes every time. Existing memory solutions are either cloud-dependent, tied to a single vendor, or designed for chat conversations rather than developer workflows.
+Most AI coding sessions are stateless.
+
+The agent may be strong, but it forgets project decisions, onboarding steps, prior fixes, and delivery context the moment the session ends. That creates repeated prompts, inconsistent suggestions, and wasted time across real engineering workflows.
 
 ## Solution
 
-Aki is a local-first AI agent that gives coding assistants durable project memory through MCP (Model Context Protocol). It stores decisions, facts, and procedures in SQLite and ChromaDB, uses Qwen for structured extraction from prose, and exposes everything through five MCP tools that any compatible coding assistant can call. When your AI agent starts a new session, it queries Aki first — and the response changes because it knows your project history.
+Aki is a local-first open-source product that gives coding agents durable project memory through MCP.
+
+It combines:
+
+- persistent project memory;
+- resumable sessions and checkpoints;
+- operational cockpit and audit views;
+- specialized agent profiles;
+- host bootstrap for OpenCode and Claude Code;
+- SDD-aware project context.
+
+The result is simple but powerful: an AI agent can come back to a repository and continue with context instead of starting blind.
+
+## Why it stands out
+
+Most memory products stop at “store some notes.” Aki goes further:
+
+- **Memory that fits engineering work** — facts, decisions, procedures, and events, not generic chat history.
+- **Session continuity** — project sessions can resume with stored checkpoints.
+- **Operational visibility** — cockpit, project registry, doctor, and structured audit reports.
+- **Agent specialization** — planner / builder / reviewer-style profiles with scoped tools and memory.
+- **Workflow awareness** — built-in handling for SDD artifacts and repo health.
+- **MCP-native integration** — designed for coding-agent hosts, not retrofitted from a chat app.
 
 ## Key Features
 
-- **5 MCP tools**: `memory_context`, `memory_search`, `memory_save`, `memory_extract`, `memory_explain` — the full memory lifecycle in one protocol
-- **Qwen-powered extraction**: turns architecture prose into structured memory candidates (facts, decisions, procedures) using Qwen Cloud APIs
-- **OpenCode + Claude Code integration**: one command generates the MCP config, restart your editor, done
-- **Episodic, semantic, and procedural memory**: not just a key-value store — events, facts, and repeatable procedures with confidence scores
-- **Deterministic fallback**: all core operations work without Qwen credentials — save, search, and context assembly never depend on external APIs
-- **Local-first**: SQLite + ChromaDB on your machine, no cloud storage required, your project data stays private
+- **5 MCP memory tools**: `memory_context`, `memory_search`, `memory_save`, `memory_extract`, `memory_explain`
+- **Local-first storage**: SQLite + ChromaDB
+- **Qwen-powered extraction** when credentials are configured
+- **Deterministic fallback** for core memory flows without Qwen credentials
+- **Operational cockpit** when running `aki` inside a recognized project
+- **Project audit engine** with markdown reports under `docs/audits/`
+- **Project registry** for browsing known repos
+- **Specialized agent profiles** with tool and memory policies
+- **SDD bootstrap and awareness** via `aki sdd-init` and artifact detection
+- **MCP bootstrap** through `aki mcp-config` and `aki mcp-setup`
 
 ## Technical Stack
 
 | Layer | Technology |
-|-------|-----------|
+|---|---|
 | Language | Python 3.11+ |
-| LLM | Qwen Cloud (qwen3.7-max, qwen3.7-plus) |
-| Protocol | MCP (Model Context Protocol) over stdio |
-| Storage | SQLite (SQLAlchemy) + ChromaDB (vector search) |
-| Embeddings | sentence-transformers/all-MiniLM-L6-v2 (local) |
-| CLI | Typer + Rich |
-| Testing | pytest (51 tests passing) |
+| Protocol | MCP over stdio |
+| LLM | Qwen Cloud / DashScope-compatible APIs |
+| Storage | SQLite + ChromaDB |
+| Embeddings | sentence-transformers/all-MiniLM-L6-v2 |
+| CLI / UX | Typer + Rich |
+| CI | GitHub Actions |
 
-## What Makes It Different
+## Demo Story
 
-Most memory agents are built for chat — they remember what you said last Tuesday. Aki is built for developer workflow. It understands the difference between a fact ("we use pnpm"), a decision ("the MVP runtime is MCP stdio, not HTTP"), and a procedure ("run uv sync before testing"). It stores these with project scope, confidence scores, and vector embeddings so agents can retrieve exactly what they need before editing code.
+The strongest demo path is:
 
-The MCP-first design means Aki works with any compatible host — OpenCode, Claude Code, or any tool that speaks MCP stdio. No vendor lock-in, no REST API, no cloud dependency for core operations.
+1. open the cockpit with `uv run aki`;
+2. run `uv run aki audit aki`;
+3. show `uv run aki agents`;
+4. generate host bootstrap with `uv run aki mcp-config opencode`;
+5. demonstrate that a stored project decision changes the agent’s next answer.
 
-## Demo Video
+That sequence tells a credible product story: Aki is not only memory, it is memory plus operating context for real coding workflows.
 
-[Video will be uploaded here]
+## Alibaba / Qwen alignment
 
-## Installation
+Aki’s default Qwen configuration targets the DashScope international endpoint:
+
+```text
+https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+```
+
+That gives the project a concrete, repo-level proof of Qwen/Alibaba compatibility while keeping the core product local-first.
+
+## Quick Start
 
 ```bash
-git clone https://github.com/Akicoders/aki
+git clone https://github.com/Akicoders/aki.git
 cd aki
 uv sync --all-extras
-uv run aki --help
-```
-
-### Quick start
-
-```bash
-# Generate MCP config for OpenCode
-uv run aki mcp-config opencode
-
-# Start the MCP server
-uv run aki mcp
-
-# Or use the CLI directly
-uv run aki remember "We use pnpm" --project my-project
-uv run aki recall "package manager" --project my-project
-```
-
-### Optional: Qwen extraction
-
-```bash
-cp .env.example .env
-# Edit .env and set QWEN_API_KEY
-uv run aki mcp  # memory_extract now uses Qwen for structured extraction
+uv run aki doctor
+uv run aki
 ```
 
 ## Links
 
 - **GitHub**: https://github.com/Akicoders/aki
-- **Docs**: https://github.com/Akicoders/aki/tree/main/docs
+- **README**: https://github.com/Akicoders/aki/blob/main/README.md
 - **Integration guide**: https://github.com/Akicoders/aki/blob/main/docs/integration.md
-- **Demo walkthrough**: https://github.com/Akicoders/aki/blob/main/docs/demo.md
-
-## Built with
-
-- [Qwen Cloud](https://qwen.ai/) — LLM for extraction and explanation
-- [MCP](https://modelcontextprotocol.io/) — Model Context Protocol for tool delivery
-- [ChromaDB](https://www.trychroma.com/) — vector search for semantic memory retrieval
-- [SQLite](https://www.sqlite.org/) — durable local storage
+- **Evaluator walkthrough**: https://github.com/Akicoders/aki/blob/main/docs/demo.md
+- **Agent profiles**: https://github.com/Akicoders/aki/blob/main/docs/agent-profiles.md

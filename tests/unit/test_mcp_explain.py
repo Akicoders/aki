@@ -1,3 +1,4 @@
+import pytest
 from agentos.mcp.tools import MemoryToolHandlers
 
 
@@ -18,11 +19,12 @@ class FailingExplainQwen:
         raise RuntimeError("qwen unavailable")
 
 
-def test_memory_explain_uses_only_stored_memory_content(memory_repo):
+@pytest.mark.asyncio
+async def test_memory_explain_uses_only_stored_memory_content(memory_repo):
     handlers = MemoryToolHandlers(repository=memory_repo, qwen_client=FakeExplainQwen())
-    handlers.memory_save(kind="fact", title="Runtime", content="Project uses uv", project="demo")
+    await handlers.memory_save(kind="fact", title="Runtime", content="Project uses uv", project="demo")
 
-    response = handlers.memory_explain(query="How are checks run?", project="demo")
+    response = await handlers.memory_explain(query="How are checks run?", project="demo")
 
     assert response["ok"] is True
     assert response["errors"] == []
@@ -31,16 +33,17 @@ def test_memory_explain_uses_only_stored_memory_content(memory_repo):
     assert "pnpm" not in response["items"][0]["explanation"]
 
 
-def test_memory_explain_falls_back_when_qwen_is_unavailable(memory_repo):
+@pytest.mark.asyncio
+async def test_memory_explain_falls_back_when_qwen_is_unavailable(memory_repo):
     handlers = MemoryToolHandlers(repository=memory_repo, qwen_client=FailingExplainQwen())
-    handlers.memory_save(
+    await handlers.memory_save(
         kind="decision",
         title="MCP transport",
         content="Use stdio MCP for local agents",
         project="demo",
     )
 
-    response = handlers.memory_explain(query="stdio transport", project="demo")
+    response = await handlers.memory_explain(query="stdio transport", project="demo")
 
     assert response["ok"] is True
     assert response["errors"] == ["Qwen explanation failed: qwen unavailable"]

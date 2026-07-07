@@ -1,0 +1,144 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 680" font-family="'Space Grotesk', system-ui, -apple-system, sans-serif" fill="none">
+  <defs>
+    <marker id="arrow-solid" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 Z" fill="#8394A3"/>
+    </marker>
+    <marker id="arrow-dashed" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 Z" fill="#5c6170"/>
+    </marker>
+    <filter id="ai-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feFlood flood-color="#CB7C94" flood-opacity="0.12"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="box-glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feFlood flood-color="#7FB4CA" flood-opacity="0.08"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="680" fill="#06080f" rx="0"/>
+
+  <!-- ===== HEADER ===== -->
+  <text x="400" y="28" text-anchor="middle" font-size="22" font-weight="700" fill="#F3F6F9" letter-spacing="1">Aki Architecture</text>
+  <text x="400" y="46" text-anchor="middle" font-size="10" fill="#A1AABB" letter-spacing="1.5">PROJECT MEMORY AGENT FOR AI CODING ASSISTANTS</text>
+
+  <!-- ===== MCP INTEGRATION LAYER (section outline) ===== -->
+  <rect x="265" y="65" width="270" height="200" rx="10" stroke="#2a3142" stroke-width="1" stroke-dasharray="4,4"/>
+  <text x="275" y="78" font-size="8" fill="#8394A3" letter-spacing="2">MCP INTEGRATION LAYER</text>
+
+  <!-- ===== ROW 1: AI Coding Host ===== -->
+  <g filter="url(#box-glow)">
+    <rect x="280" y="80" width="240" height="60" rx="8" fill="#1c212c" stroke="#313342" stroke-width="1"/>
+    <rect x="280" y="80" width="6" height="60" rx="3" fill="#7FB4CA"/>
+  </g>
+  <rect x="302" y="93" width="18" height="14" rx="2" stroke="#7FB4CA" stroke-width="1.2" fill="none"/>
+  <text x="306" y="103" font-size="8" fill="#7FB4CA">&gt;_</text>
+  <text x="330" y="104" font-size="14" font-weight="600" fill="#F3F6F9">AI Coding Host</text>
+  <text x="330" y="123" font-size="9" fill="#A1AABB">Claude Code · OpenCode · Cursor</text>
+
+  <!-- Arrow 1 -> 2 -->
+  <line x1="400" y1="140" x2="400" y2="198" stroke="#8394A3" stroke-width="1.5" marker-end="url(#arrow-solid)"/>
+  <text x="408" y="175" font-size="9" fill="#8394A3">MCP over stdio</text>
+
+  <!-- ===== ROW 2: Aki MCP Server ===== -->
+  <rect x="280" y="205" width="240" height="60" rx="8" fill="#1c212c" stroke="#313342" stroke-width="1"/>
+  <rect x="280" y="205" width="6" height="60" rx="3" fill="#B7CC85"/>
+  <rect x="303" y="220" width="14" height="10" rx="2" stroke="#B7CC85" stroke-width="1.2" fill="none"/>
+  <circle cx="310" cy="225" r="2" fill="#B7CC85"/>
+  <text x="330" y="229" font-size="14" font-weight="600" fill="#F3F6F9">Aki MCP Server</text>
+  <text x="330" y="248" font-size="9" fill="#A1AABB">Python · FastMCP · asyncio</text>
+
+  <!-- Arrow 2 -> 3 -->
+  <line x1="400" y1="265" x2="400" y2="303" stroke="#8394A3" stroke-width="1.5" marker-end="url(#arrow-solid)"/>
+  <text x="408" y="290" font-size="9" fill="#8394A3">dispatches memory tools</text>
+
+  <!-- ===== ROW 3: Memory Tool Layer ===== -->
+  <rect x="255" y="310" width="290" height="55" rx="8" fill="#1c212c" stroke="#313342" stroke-width="1"/>
+  <rect x="255" y="310" width="6" height="55" rx="3" fill="#DFBD76"/>
+  <circle cx="277" cy="332" r="6" stroke="#DFBD76" stroke-width="1.2" fill="none"/>
+  <circle cx="277" cy="332" r="2" fill="#DFBD76"/>
+  <text x="296" y="328" font-size="14" font-weight="600" fill="#F3F6F9">Memory Tool Layer</text>
+  <text x="296" y="348" font-size="9" fill="#A1AABB">context · search · save · extract · explain</text>
+
+  <!-- ===== BRANCHING ARROWS 3 -> 4 ===== -->
+
+  <!-- Arrow to Memory Store -->
+  <polyline points="320,365 320,380 160,380 160,418" stroke="#8394A3" stroke-width="1.5" fill="none" marker-end="url(#arrow-solid)"/>
+  <text x="224" y="374" font-size="8.5" fill="#8394A3">facts, decisions, procedures</text>
+
+  <!-- Arrow to Qwen Cloud (glowing AI path) -->
+  <g filter="url(#ai-glow)">
+    <line x1="400" y1="365" x2="400" y2="418" stroke="#CB7C94" stroke-width="2" marker-end="url(#arrow-solid)"/>
+  </g>
+  <text x="408" y="398" font-size="8.5" fill="#CB7C94">structured extraction</text>
+
+  <!-- Arrow to Cockpit -->
+  <polyline points="480,365 480,380 640,380 640,418" stroke="#8394A3" stroke-width="1.5" fill="none" marker-end="url(#arrow-solid)"/>
+  <text x="555" y="374" font-size="8.5" fill="#8394A3">read-only visibility</text>
+
+  <!-- ===== DATA & SERVICES LAYER (section outline) ===== -->
+  <rect x="30" y="410" width="740" height="92" rx="10" stroke="#2a3142" stroke-width="1" stroke-dasharray="4,4"/>
+  <text x="40" y="423" font-size="8" fill="#8394A3" letter-spacing="2">DATA &amp; SERVICES LAYER</text>
+
+  <!-- ===== ROW 4a: Memory Store (x=50, w=220, center=160) ===== -->
+  <rect x="50" y="425" width="220" height="55" rx="8" fill="#1c212c" stroke="#313342" stroke-width="1"/>
+  <rect x="50" y="425" width="6" height="55" rx="3" fill="#7AA89F"/>
+  <!-- Database icon -->
+  <ellipse cx="72" cy="448" rx="7" ry="2.5" stroke="#7AA89F" stroke-width="1.2" fill="none"/>
+  <path d="M65,448 L65,455 Q72,457.5 79,455 L79,448" stroke="#7AA89F" stroke-width="1.2" fill="none"/>
+  <text x="88" y="449" font-size="14" font-weight="600" fill="#F3F6F9">Memory Store</text>
+  <text x="88" y="468" font-size="9" fill="#A1AABB">SQLite · ChromaDB · project-scoped</text>
+
+  <!-- ===== ROW 4b: Qwen Cloud (x=290, w=220, center=400) ===== -->
+  <rect x="290" y="425" width="220" height="55" rx="8" fill="#1c212c" stroke="#313342" stroke-width="1" filter="url(#ai-glow)"/>
+  <rect x="290" y="425" width="6" height="55" rx="3" fill="#CB7C94"/>
+  <!-- Cloud icon -->
+  <path d="M306,452 Q306,447 312,447 Q314,442 319,442 Q324,442 326,447 Q332,447 332,452 Z" stroke="#CB7C94" stroke-width="1.2" fill="none"/>
+  <text x="328" y="449" font-size="14" font-weight="600" fill="#F3F6F9">Qwen Cloud</text>
+  <text x="328" y="468" font-size="9" fill="#A1AABB">DashScope API · QwQ-32B</text>
+
+  <!-- ===== ROW 4c: Cockpit · Audit · Registry (x=530, w=220, center=640) ===== -->
+  <rect x="530" y="425" width="220" height="55" rx="8" fill="#1c212c" stroke="#313342" stroke-width="1"/>
+  <rect x="530" y="425" width="6" height="55" rx="3" fill="#A3B5D6"/>
+  <!-- Gauge icon -->
+  <path d="M546,452 A8,8 0 0,1 562,452" stroke="#A3B5D6" stroke-width="1.2" fill="none"/>
+  <line x1="554" y1="452" x2="554" y2="446" stroke="#A3B5D6" stroke-width="1"/>
+  <text x="568" y="449" font-size="12" font-weight="600" fill="#F3F6F9">Cockpit · Audit · Registry</text>
+  <text x="568" y="468" font-size="9" fill="#A1AABB">operator project visibility</text>
+
+  <!-- ===== DASHED ARROW: Cockpit -> Memory Store (read-only) ===== -->
+  <line x1="640" y1="492" x2="160" y2="492" stroke="#5c6170" stroke-width="1" stroke-dasharray="5,3" marker-end="url(#arrow-dashed)"/>
+  <text x="400" y="486" text-anchor="middle" font-size="8" fill="#5c6170">read-only project visibility</text>
+
+  <!-- ===== DIVIDER ===== -->
+  <line x1="40" y1="525" x2="760" y2="525" stroke="#313342" stroke-width="1"/>
+
+  <!-- ===== CALLOUT SECTION ===== -->
+  <text x="40" y="550" font-size="13" font-weight="600" fill="#F3F6F9">Key Features</text>
+
+  <circle cx="48" cy="572" r="3" fill="#7FB4CA"/>
+  <text x="60" y="576" font-size="10" fill="#F3F6F9">Local-first project memory</text>
+  <text x="224" y="576" font-size="10" fill="#8394A3">— persistent across sessions</text>
+
+  <circle cx="48" cy="595" r="3" fill="#B7CC85"/>
+  <text x="60" y="599" font-size="10" fill="#F3F6F9">Project-scoped retrieval</text>
+  <text x="224" y="599" font-size="10" fill="#8394A3">— coding agent context from durable storage</text>
+
+  <circle cx="48" cy="618" r="3" fill="#DFBD76"/>
+  <text x="60" y="622" font-size="10" fill="#F3F6F9">Qwen-powered extraction</text>
+  <text x="224" y="622" font-size="10" fill="#8394A3">— structured memory from unstructured text</text>
+
+  <circle cx="48" cy="641" r="3" fill="#7AA89F"/>
+  <text x="60" y="645" font-size="10" fill="#F3F6F9">Deterministic fallback</text>
+  <text x="224" y="645" font-size="10" fill="#8394A3">— core flows work without Qwen credentials</text>
+
+  <circle cx="48" cy="664" r="3" fill="#A3B5D6"/>
+  <text x="60" y="668" font-size="10" fill="#F3F6F9">Deployed on Alibaba Cloud</text>
+  <text x="224" y="668" font-size="10" fill="#8394A3">— ECS · proof of deployment ready</text>
+
+</svg>

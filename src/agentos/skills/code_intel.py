@@ -13,6 +13,26 @@ from agentos.core.config import get_config
 logger = logging.getLogger(__name__)
 
 
+RIPGREP_TYPE_MAP = {
+    "python": "py",
+    "py": "py",
+    "javascript": "js",
+    "typescript": "ts",
+    "js": "js",
+    "ts": "ts",
+    "json": "json",
+    "html": "html",
+    "css": "css",
+    "rust": "rust",
+    "rs": "rs",
+    "go": "go",
+    "yaml": "yaml",
+    "yml": "yaml",
+    "markdown": "md",
+    "md": "md",
+}
+
+
 class CodeIntelSkill(Skill):
     name = "code_intel"
     description = "Code analysis: find symbols, grep AST, run tests, get coverage"
@@ -36,12 +56,24 @@ class CodeIntelSkill(Skill):
             else:
                 pattern = symbol
 
+            cleaned_lang = language.strip().lower()
+            rg_type = RIPGREP_TYPE_MAP.get(cleaned_lang)
+            
+            if rg_type:
+                cmd = ["rg", "-n", "--type", rg_type, pattern, str(target)]
+            else:
+                cmd = ["rg", "-n", "--glob", f"*.{cleaned_lang}", pattern, str(target)]
+
             result = subprocess.run(
-                ["rg", "-n", "--type", language, pattern, str(target)],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=30,
             )
+            
+            if result.returncode >= 2:
+                return SkillResult(success=False, error=f"ripgrep failed: {result.stderr.strip()}")
+                
             lines = result.stdout.strip().split("\n") if result.stdout else []
             matches = []
             for line in lines:
@@ -58,12 +90,25 @@ class CodeIntelSkill(Skill):
         """Search code using AST-aware patterns (via ripgrep)."""
         try:
             target = self._resolve_path(path)
+            
+            cleaned_lang = language.strip().lower()
+            rg_type = RIPGREP_TYPE_MAP.get(cleaned_lang)
+            
+            if rg_type:
+                cmd = ["rg", "-n", "--type", rg_type, pattern, str(target)]
+            else:
+                cmd = ["rg", "-n", "--glob", f"*.{cleaned_lang}", pattern, str(target)]
+                
             result = subprocess.run(
-                ["rg", "-n", "--type", language, pattern, str(target)],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=30,
             )
+            
+            if result.returncode >= 2:
+                return SkillResult(success=False, error=f"ripgrep failed: {result.stderr.strip()}")
+                
             lines = result.stdout.strip().split("\n") if result.stdout else []
             matches = []
             for line in lines[:100]:

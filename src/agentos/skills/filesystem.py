@@ -11,6 +11,26 @@ from agentos.skills.base import Skill, SkillResult
 logger = logging.getLogger(__name__)
 
 
+RIPGREP_TYPE_MAP = {
+    "python": "py",
+    "py": "py",
+    "javascript": "js",
+    "typescript": "ts",
+    "js": "js",
+    "ts": "ts",
+    "json": "json",
+    "html": "html",
+    "css": "css",
+    "rust": "rust",
+    "rs": "rs",
+    "go": "go",
+    "yaml": "yaml",
+    "yml": "yaml",
+    "markdown": "md",
+    "md": "md",
+}
+
+
 class FilesystemSkill(Skill):
     name = "filesystem"
     description = "File operations: read, write, search, glob, list"
@@ -138,12 +158,26 @@ class FilesystemSkill(Skill):
         try:
             target = self._resolve_path(path)
             import subprocess
+            
+            cleaned_ext = file_pattern.replace("*.", "").replace(".", "").strip().lower()
+            rg_type = RIPGREP_TYPE_MAP.get(cleaned_ext)
+            
+            if rg_type:
+                cmd = ["rg", "-n", "--type", rg_type, query, str(target)]
+            else:
+                glob_pat = f"*.{cleaned_ext}" if not ("*" in file_pattern) else file_pattern
+                cmd = ["rg", "-n", "--glob", glob_pat, query, str(target)]
+                
             result = subprocess.run(
-                ["rg", "-n", "--type", file_pattern.replace("*.", ""), query, str(target)],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=30,
             )
+            
+            if result.returncode >= 2:
+                return SkillResult(success=False, error=f"ripgrep failed: {result.stderr.strip()}")
+                
             lines = result.stdout.strip().split("\n") if result.stdout else []
             matches = []
             for line in lines[:limit]:

@@ -115,7 +115,7 @@ class SchedulerSkill(Skill):
             for e in events:
                 if e.meta.get("reminder_id") == reminder_id:
                     e.meta["status"] = "cancelled"
-                    self._memory.add_event(e)
+                    self._memory.update_event(e)
                     return SkillResult(success=True, data={"reminder_id": reminder_id})
             return SkillResult(success=False, error=f"Reminder not found: {reminder_id}")
         except Exception as e:
@@ -177,3 +177,71 @@ class SchedulerSkill(Skill):
             return cron.get_next(datetime).isoformat()
         except Exception:
             return "invalid"
+
+
+async def run_task_dispatcher(repo: MemoryRepository, print_callback: Optional[Callable[[str], None]] = None) -> int:
+    """Find and fire pending scheduled tasks and crons."""
+    import logging
+    from datetime import datetime
+    from croniter import croniter
+    from agentos.memory.models import EventType
+    
+    logger = logging.getLogger(__name__)
+    now = datetime.utcnow()
+    
+    events = repo.search_events(
+        query="",
+        event_types=[EventType.TASK],
+        limit=100,
+    )
+    
+    fired_count = 0
+    for e in events:
+        status = e.meta.get("status")
+        
+        # 1. Process scheduled reminders
+        if status == "scheduled" and "run_at" in e.meta:
+            try:
+                run_at = datetime.fromisoformat(e.meta["run_at"])
+                run_at_naive = run_at.replace(tzinfo=None) if run_at.tzinfo is not None else run_at
+                
+                if run_at_naive <= now:
+                    e.meta["status"] = "completed"
+                    e.meta["fired_at"] = now.isoformat()
+                    repo.update_event(e)
+                    
+                    msg = f"🔔 [Reminder] {e.content}"
+                    if print_callback:
+                        print_callback(msg)
+                    else:
+                        logger.info(msg)
+                    fired_count += 1
+            except Exception as ex:
+                logger.error(f"Failed to process reminder {e.id}: {ex}")
+                
+        # 2. Process active cron jobs
+        elif status == "active" and "cron" in e.meta:
+            try:
+                cron_expr = e.meta["cron"]
+                last_run_str = e.meta.get("last_run")
+                if last_run_str:
+                    last_run = datetime.fromisoformat(last_run_str).replace(tzinfo=None)
+                else:
+                    last_run = e.timestamp.replace(tzinfo=None)
+                
+                iter = croniter(cron_expr, last_run)
+                next_run = iter.get_next(datetime)
+                if next_run <= now:
+                    e.meta["last_run"] = now.isoformat()
+                    repo.update_event(e)
+                    
+                    msg = f"🔁 [Cron: {e.meta.get('name')}] {e.content}"
+                    if print_callback:
+                        print_callback(msg)
+                    else:
+                        logger.info(msg)
+                    fired_count += 1
+            except Exception as ex:
+                logger.error(f"Failed to process cron job {e.id}: {ex}")
+                
+    return fired_count

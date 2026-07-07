@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from agentos.core.config import get_config
@@ -34,7 +33,7 @@ class MemoryToolHandlers:
         self.repository = repository or MemoryRepository()
         self.qwen_client = qwen_client or get_qwen_client()
 
-    def memory_context(
+    async def memory_context(
         self,
         project: str | None = None,
         query: str | None = None,
@@ -54,7 +53,7 @@ class MemoryToolHandlers:
         capsule = build_memory_capsule(project=resolved_project, context=context)
         return _ok(resolved_project, capsule=capsule.model_dump(mode="json"))
 
-    def memory_search(
+    async def memory_search(
         self,
         query: str,
         project: str | None = None,
@@ -79,7 +78,7 @@ class MemoryToolHandlers:
         items = [_fact_item(fact) for fact in facts] + [_event_item(event) for event in events]
         return _ok(resolved_project, items=items[:safe_limit])
 
-    def memory_save(
+    async def memory_save(
         self,
         kind: str,
         title: str,
@@ -118,7 +117,7 @@ class MemoryToolHandlers:
         stored_event = self.repository.add_event(event)
         return _ok(resolved_project, memory=_event_item(stored_event))
 
-    def memory_extract(
+    async def memory_extract(
         self,
         text: str,
         project: str | None = None,
@@ -126,7 +125,7 @@ class MemoryToolHandlers:
     ) -> dict[str, Any]:
         resolved_project = detect_project(project)
         extractor = QwenMemoryExtractor(self.qwen_client)
-        extraction = _run_async(extractor.extract(text))
+        extraction = await extractor.extract(text)
         if not extraction.ok:
             return _error(resolved_project, *extraction.errors, items=[])
 
@@ -142,12 +141,13 @@ class MemoryToolHandlers:
         capsule = build_memory_capsule(project=resolved_project, context=context)
         return _ok(resolved_project, items=items, capsule=capsule.model_dump(mode="json"))
 
-    def memory_explain(self, query: str, project: str | None = None) -> dict[str, Any]:
+    async def memory_explain(self, query: str, project: str | None = None) -> dict[str, Any]:
         resolved_project = detect_project(project)
         if not query.strip():
             return _error(resolved_project, "query is required", items=[])
 
-        items = self.memory_search(query=query, project=resolved_project, limit=10)["items"]
+        search_res = await self.memory_search(query=query, project=resolved_project, limit=10)
+        items = search_res["items"]
         if not items:
             context = self.repository.assemble_context(
                 "",
@@ -162,15 +162,13 @@ class MemoryToolHandlers:
         errors: list[str] = []
         explanations = _fallback_explanations(query, items)
         try:
-            qwen_payload = _run_async(
-                self.qwen_client.structured_json(
-                    _build_explanation_prompt(query, items),
-                    system_prompt=(
-                        "Explain why each stored memory is relevant to the query. "
-                        "Use only facts present in the provided memory items. Return JSON with "
-                        "an explanations array in the same order as the items."
-                    ),
-                )
+            qwen_payload = await self.qwen_client.structured_json(
+                _build_explanation_prompt(query, items),
+                system_prompt=(
+                    "Explain why each stored memory is relevant to the query. "
+                    "Use only facts present in the provided memory items. Return JSON with "
+                    "an explanations array in the same order as the items."
+                ),
             )
             explanations = _safe_qwen_explanations(qwen_payload, items, explanations)
         except Exception as exc:
@@ -261,14 +259,7 @@ def _event_item(event: MemoryEvent) -> dict[str, Any]:
     }
 
 
-def _run_async(awaitable: Any) -> Any:
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(awaitable)
 
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        return executor.submit(lambda: asyncio.run(awaitable)).result()
 
 
 def _build_explanation_prompt(query: str, items: list[dict[str, Any]]) -> str:

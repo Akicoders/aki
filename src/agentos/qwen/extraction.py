@@ -80,7 +80,7 @@ class QwenMemoryExtractor:
 
         deduped = _dedupe_candidates(all_candidates)
         if len(chunks) == 1 or len(deduped) <= 1:
-            return ExtractionResult(ok=bool(deduped) and not errors, candidates=deduped, errors=errors)
+            return ExtractionResult(ok=len(deduped) > 0, candidates=deduped, errors=errors)
 
         try:
             consolidated_payload = await self.qwen_client.structured_json(
@@ -99,7 +99,7 @@ class QwenMemoryExtractor:
             # Deterministic dedupe is a valid fallback when model-based consolidation is unavailable.
             pass
 
-        return ExtractionResult(ok=bool(deduped) and not errors, candidates=deduped, errors=errors)
+        return ExtractionResult(ok=len(deduped) > 0, candidates=deduped, errors=errors)
 
 
 def validate_extraction_payload(payload: dict[str, Any]) -> tuple[list[MemoryCandidate], list[str]]:
@@ -145,6 +145,7 @@ def _candidate_from_raw(
         errors.append(f"{path} missing title")
     if not content:
         errors.append(f"{path} missing content")
+
     if not provenance:
         errors.append(f"{path} missing provenance")
     if not isinstance(confidence, int | float) or not 0 <= float(confidence) <= 1:

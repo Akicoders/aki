@@ -199,6 +199,27 @@ class MemoryRepository:
 
         return event
 
+    def update_event(self, event: MemoryEvent) -> None:
+        """Update an existing event in SQLite and ChromaDB."""
+        if event.embedding is None:
+            event.embedding = self._embed(event.content)
+
+        with self.db.session() as session:
+            session.merge(event.to_model())
+
+        self.collection.update(
+            ids=[event.id],
+            embeddings=[event.embedding],
+            documents=[event.content],
+            metadatas=[{
+                "type": event.type.value,
+                "project": event.project,
+                "source": event.source,
+                "timestamp": event.timestamp.isoformat(),
+                "session_id": event.session_id or "",
+            }],
+        )
+
     def get_event(self, event_id: str) -> Optional[MemoryEvent]:
         with self.db.session() as session:
             model = session.get(MemoryEventModel, event_id)
@@ -585,6 +606,7 @@ class MemoryRepository:
                     )
                     self.upsert_fact(fact)
                     fact_count += 1
+                session.delete(evt)
 
             return fact_count
 

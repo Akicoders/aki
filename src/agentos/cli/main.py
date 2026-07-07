@@ -71,6 +71,16 @@ if TYPE_CHECKING:
     from agentos.agent.core import AgentOS
     from agentos.agents import AgentProfile
 
+def run_async_cmd(coro):
+    async def wrapper():
+        try:
+            return await coro
+        finally:
+            from agentos.qwen.client import close_qwen_client
+            await close_qwen_client()
+    return asyncio.run(wrapper())
+
+
 app = typer.Typer(
     name="aki",
     help="Aki - AI agent with portable project memory",
@@ -264,7 +274,7 @@ def chat(
         else:
             console.print(Markdown(response))
 
-    asyncio.run(run())
+    run_async_cmd(run())
 
 
 @app.command()
@@ -294,7 +304,7 @@ def interactive(
             border_style="yellow",
         ))
 
-    asyncio.run(_async_interactive(agent, project, session_id, profile_id=profile))
+    run_async_cmd(_async_interactive(agent, project, session_id, profile_id=profile))
 
 
 @app.command("mcp")
@@ -920,7 +930,7 @@ def _print_interactive_header(
 
     try:
         with console.status(_format_status("Collecting project context")):
-            context = asyncio.run(agent.recall("", project))
+            context = run_async_cmd(agent.recall("", project))
         if context.facts:
             facts_text = "\n".join(
                 f"  [cyan]{f.key}[/cyan] = {f.value[:60]}"
@@ -977,69 +987,93 @@ def sdd_init(
 
 
 async def _async_interactive(agent, project, session_id, profile_id: Optional[str] = None):
-    while True:
-        try:
-            user_input = Prompt.ask("[bold green]You[/bold green]")
-            if user_input.lower() in ("exit", "quit", "/exit", "/quit"):
-                console.print("[dim]Goodbye![/dim]")
+    from agentos.skills.scheduler import run_task_dispatcher
+    from agentos.memory.repository import MemoryRepository
+
+    async def background_dispatcher():
+        repo = MemoryRepository()
+        while True:
+            try:
+                fired = await run_task_dispatcher(repo, print_callback=lambda msg: console.print(f"\n{msg}"))
+                if fired > 0:
+                    console.print("[bold green]You[/bold green]: ", end="", flush=True)
+            except asyncio.CancelledError:
                 break
-            if user_input.lower() in ("/help", "help"):
-                _show_help(agent, project, session_id)
-                continue
-            if user_input.startswith("/"):
-                await _handle_command(user_input, agent, project, session_id)
-                continue
+            except Exception as e:
+                logger.error(f"Error in background task dispatcher: {e}")
+            await asyncio.sleep(5)
 
-            with console.status(_format_status("Starting turn")) as status:
-                def update_status(message: str) -> None:
-                    status.update(_format_status(message))
+    dispatcher_task = asyncio.create_task(background_dispatcher())
+    try:
+        while True:
+            try:
+                user_input = Prompt.ask("[bold green]You[/bold green]")
+                if user_input.lower() in ("exit", "quit", "/exit", "/quit"):
+                    console.print("[dim]Goodbye![/dim]")
+                    break
+                if user_input.lower() in ("/help", "help"):
+                    _show_help(agent, project, session_id)
+                    continue
+                if user_input.startswith("/"):
+                    await _handle_command(user_input, agent, project, session_id)
+                    continue
 
-                stream = agent.stream_chat(
-                    user_input,
-                    project,
-                    session_id,
-                    status_callback=update_status,
-                    profile_id=profile_id,
-                )
+                with console.status(_format_status("Starting turn")) as status:
+                    def update_status(message: str) -> None:
+                        status.update(_format_status(message))
 
-                if hasattr(stream, "__aiter__"):
-                    started_printing = False
-                    async for token in stream:
-                        if not started_printing:
-                            if hasattr(status, "stop"):
-                                status.stop()
-                            console.print("[bold cyan]Agent:[/bold cyan] ", end="", flush=True)
-                            started_printing = True
-                        console.print(token, end="", flush=True)
-
-                    if started_printing:
-                        console.print()
-                    else:
-                        if hasattr(status, "stop"):
-                            status.stop()
-                        console.print("[bold cyan]Agent:[/bold cyan] (sin respuesta)")
-                else:
-                    if hasattr(status, "stop"):
-                        status.stop()
-                    response = await agent.chat(
+                    stream = agent.stream_chat(
                         user_input,
                         project,
                         session_id,
                         status_callback=update_status,
                         profile_id=profile_id,
                     )
-                    console.print(Markdown(f"**Agent:** {response}"))
 
-        except KeyboardInterrupt:
-            console.print("\n[dim]Interrupted[/dim]")
-            break
-        except EOFError:
-            break
-        except Exception as exc:
-            logger.exception("Interactive turn failed")
-            console.print(f"[red]Turn failed:[/red] {_friendly_turn_error(exc)}")
-            console.print("[dim]Tip: run `aki sdd-init` to structure this as a spec-driven change.[/dim]")
-            continue
+                    if hasattr(stream, "__aiter__"):
+                        started_printing = False
+                        async for token in stream:
+                            if not started_printing:
+                                if hasattr(status, "stop"):
+                                    status.stop()
+                                console.print("[bold cyan]Agent:[/bold cyan] ", end="", flush=True)
+                                started_printing = True
+                            console.print(token, end="", flush=True)
+
+                        if started_printing:
+                            console.print()
+                        else:
+                            if hasattr(status, "stop"):
+                                status.stop()
+                            console.print("[bold cyan]Agent:[/bold cyan] (sin respuesta)")
+                    else:
+                        if hasattr(status, "stop"):
+                            status.stop()
+                        response = await agent.chat(
+                            user_input,
+                            project,
+                            session_id,
+                            status_callback=update_status,
+                            profile_id=profile_id,
+                        )
+                        console.print(Markdown(f"**Agent:** {response}"))
+
+            except KeyboardInterrupt:
+                console.print("\n[dim]Interrupted[/dim]")
+                break
+            except EOFError:
+                break
+            except Exception as exc:
+                logger.exception("Interactive turn failed")
+                console.print(f"[red]Turn failed:[/red] {_friendly_turn_error(exc)}")
+                console.print("[dim]Tip: run `aki sdd-init` to structure this as a spec-driven change.[/dim]")
+                continue
+    finally:
+        dispatcher_task.cancel()
+        try:
+            await dispatcher_task
+        except asyncio.CancelledError:
+            pass
 
 
 @app.command()
@@ -1056,7 +1090,7 @@ def remember(
         event = await agent.remember(content, project, EventType(type))
         console.print(f"[green]✓[/green] Remembered: {event.id}")
 
-    asyncio.run(run())
+    run_async_cmd(run())
 
 
 @app.command()
@@ -1086,7 +1120,7 @@ def recall(
             )
             console.print(f"  {event.content}")
 
-        asyncio.run(run_by_id())
+        run_async_cmd(run_by_id())
         return
 
     if not query:
@@ -1099,7 +1133,7 @@ def recall(
         context = await agent.recall(query, project)
         _print_context(context, limit)
 
-    asyncio.run(run())
+    run_async_cmd(run())
 
 
 @app.command()
@@ -1127,7 +1161,7 @@ def facts(
 
         console.print(table)
 
-    asyncio.run(run())
+    run_async_cmd(run())
 
 
 @app.command()
@@ -1145,7 +1179,7 @@ def set_fact(
         await agent.set_fact(key, value, project, confidence)
         console.print(f"[green]✓[/green] Fact set: {key} = {value}")
 
-    asyncio.run(run())
+    run_async_cmd(run())
 
 
 @app.command()

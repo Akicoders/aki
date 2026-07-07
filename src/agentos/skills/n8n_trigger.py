@@ -25,7 +25,7 @@ class N8nTriggerSkill(Skill):
     def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
         if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
+            headers["X-N8N-API-KEY"] = self.api_key
         return headers
 
     async def trigger_workflow(

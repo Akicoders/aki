@@ -612,10 +612,19 @@ class AgentOS:
                 result: SkillResult = await self.skills.execute(skill_name, fn_name, fn_args)
 
                 # Store tool result
+                import json
+                if hasattr(result, "success") and hasattr(result, "data") and hasattr(result, "error"):
+                    if result.success:
+                        content_str = json.dumps(result.data) if isinstance(result.data, (dict, list)) else str(result.data)
+                    else:
+                        content_str = json.dumps({"error": result.error})
+                else:
+                    content_str = result.model_dump_json() if hasattr(result, 'model_dump_json') else str(result)
+
                 tool_result_msg = {
                     "role": "tool",
                     "tool_call_id": tool_call_id,
-                    "content": result.model_dump_json() if hasattr(result, 'model_dump_json') else str(result),
+                    "content": content_str,
                 }
                 messages.append(tool_result_msg)
 

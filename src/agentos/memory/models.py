@@ -60,7 +60,7 @@ class MemoryFactModel(Base):
     value: Mapped[str] = mapped_column(Text)
     scope: Mapped[str] = mapped_column(String(256), index=True)  # project:ERP-AI, global, user:paul
     confidence: Mapped[float] = mapped_column(Float, default=1.0)
-    source_event_id: Mapped[Optional[str]] = mapped_column(String(64), ForeignKey("memory_events.id"), nullable=True)
+    source_event_id: Mapped[Optional[str]] = mapped_column(String(64), ForeignKey("memory_events.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     access_count: Mapped[int] = mapped_column(Integer, default=0)
