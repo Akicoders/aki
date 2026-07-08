@@ -18,6 +18,8 @@ env/
 .idea/
 *.swp
 *.swo
+.claude/
+.codegraph/
 
 # OS
 .DS_Store
