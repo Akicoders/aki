@@ -87,7 +87,7 @@ def test_cockpit_interactive_flag_runs_navigation_loop(tmp_path, monkeypatch):
     result = runner.invoke(app, ["cockpit", "--interactive"], input="q\n")
 
     assert result.exit_code == 0
-    assert "Operational Cockpit" in result.output
+    assert "OPERATIONAL COCKPIT" in result.output.upper()
 
 
 def runner_console():
