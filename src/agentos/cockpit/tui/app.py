@@ -1,0 +1,64 @@
+from pathlib import Path
+from textual.app import App, ComposeResult
+from textual.containers import Horizontal, Vertical
+from textual.widgets import DirectoryTree, Footer, Header, TextArea
+from agentos.cli.cockpit import ProjectRef
+
+class AkiCockpitApp(App):
+    """The interactive Aki Cockpit built with Textual."""
+
+    CSS = """
+    #tree-view {
+        width: 30%;
+        dock: left;
+        border-right: solid cyan;
+    }
+    #editor-view {
+        width: 70%;
+        height: 100%;
+    }
+    """
+
+    BINDINGS = [
+        ("q", "quit", "Quit"),
+        ("ctrl+s", "save", "Save File"),
+    ]
+
+    def __init__(self, project: ProjectRef, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.project = project
+        self.current_file: Path | None = None
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+        with Horizontal():
+            yield DirectoryTree(self.project.root_path, id="tree-view")
+            with Vertical(id="editor-view"):
+                editor = TextArea(language="markdown", read_only=False)
+                yield editor
+        yield Footer()
+
+    def on_directory_tree_file_selected(self, event: DirectoryTree.FileSelected) -> None:
+        """Handle file selection from the interactive tree."""
+        try:
+            path = Path(event.path)
+            content = path.read_text(encoding="utf-8")
+            editor = self.query_one(TextArea)
+            editor.text = content
+            self.current_file = path
+            editor.focus()
+            self.notify(f"Opened {path.name}")
+        except Exception as e:
+            self.notify(f"Could not open file: {e}", severity="error")
+
+    def action_save(self) -> None:
+        """Save the current editor content to the file."""
+        if self.current_file:
+            try:
+                editor = self.query_one(TextArea)
+                self.current_file.write_text(editor.text, encoding="utf-8")
+                self.notify(f"Saved {self.current_file.name}", severity="information")
+            except Exception as e:
+                self.notify(f"Failed to save: {e}", severity="error")
+        else:
+            self.notify("No file currently open to save.", severity="warning")

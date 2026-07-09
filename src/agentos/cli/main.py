@@ -751,8 +751,10 @@ def cockpit_callback(
             )
             return
         if interactive:
-            exit_code = run_cockpit_loop(console, resolved)
-            raise typer.Exit(exit_code)
+            from agentos.cockpit.tui.app import AkiCockpitApp
+            app = AkiCockpitApp(resolved)
+            app.run()
+            raise typer.Exit(0)
         render_cockpit_overview(console, resolved)
 
 
