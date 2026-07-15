@@ -1,7 +1,8 @@
 from pathlib import Path
 from textual.app import ComposeResult
 from textual.containers import Horizontal
-from textual.widgets import DirectoryTree, Markdown
+from textual.widgets import Markdown
+from agentos.cockpit.tui.components import FilteredDirectoryTree
 
 class SDDHubTab(Horizontal):
     """The SDD Hub tab."""
@@ -16,10 +17,10 @@ class SDDHubTab(Horizontal):
         if not sdd_path.exists():
             sdd_path = self.root_path
             
-        yield DirectoryTree(sdd_path, id="sdd-tree")
+        yield FilteredDirectoryTree(sdd_path, id="sdd-tree")
         yield Markdown("# SDD Hub\nSelect a markdown file from the tree to view its contents.", id="sdd-viewer")
         
-    def on_directory_tree_file_selected(self, event: DirectoryTree.FileSelected) -> None:
+    def on_directory_tree_file_selected(self, event: FilteredDirectoryTree.FileSelected) -> None:
         """Load markdown files into the viewer."""
         path = Path(event.path)
         if path.suffix == ".md":

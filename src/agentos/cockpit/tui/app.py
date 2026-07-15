@@ -1,7 +1,8 @@
 from pathlib import Path
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.widgets import DirectoryTree, Footer, Header, TextArea, TabbedContent, TabPane
+from textual.widgets import Footer, Header, TextArea, TabbedContent, TabPane
+from agentos.cockpit.tui.components import FilteredDirectoryTree
 from agentos.cli.cockpit import ProjectRef
 
 # Import our new tabs
@@ -62,7 +63,7 @@ class AkiCockpitApp(App):
         with TabbedContent():
             with TabPane("Explorer", id="tab-explorer"):
                 with Horizontal():
-                    yield DirectoryTree(self.project.root_path, id="tree-view")
+                    yield FilteredDirectoryTree(self.project.root_path, id="tree-view")
                     with Vertical(id="editor-view"):
                         editor = TextArea(language="markdown", read_only=False)
                         yield editor
@@ -78,7 +79,7 @@ class AkiCockpitApp(App):
                 
         yield Footer()
 
-    def on_directory_tree_file_selected(self, event: DirectoryTree.FileSelected) -> None:
+    def on_directory_tree_file_selected(self, event: FilteredDirectoryTree.FileSelected) -> None:
         """Handle file selection from the main interactive tree."""
         # Only handle if it's the main tree, SDD Hub has its own handler
         if event.control.id == "tree-view":
