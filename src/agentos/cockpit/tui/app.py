@@ -1,8 +1,13 @@
 from pathlib import Path
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.widgets import DirectoryTree, Footer, Header, TextArea
+from textual.widgets import DirectoryTree, Footer, Header, TextArea, TabbedContent, TabPane
 from agentos.cli.cockpit import ProjectRef
+
+# Import our new tabs
+from agentos.cockpit.tui.chat import ChatTab
+from agentos.cockpit.tui.tasks import TaskBoardTab
+from agentos.cockpit.tui.sdd import SDDHubTab
 
 class AkiCockpitApp(App):
     """The interactive Aki Cockpit built with Textual."""
@@ -16,6 +21,28 @@ class AkiCockpitApp(App):
     #editor-view {
         width: 70%;
         height: 100%;
+    }
+    #sdd-tree {
+        width: 30%;
+        dock: left;
+        border-right: solid magenta;
+    }
+    #sdd-viewer {
+        width: 70%;
+        height: 100%;
+        padding: 1 2;
+    }
+    #chat-log {
+        height: 1fr;
+        border: solid cyan;
+        margin-bottom: 1;
+    }
+    #chat-input {
+        dock: bottom;
+    }
+    #task-list {
+        height: 100%;
+        border: solid green;
     }
     """
 
@@ -31,25 +58,40 @@ class AkiCockpitApp(App):
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
-        with Horizontal():
-            yield DirectoryTree(self.project.root_path, id="tree-view")
-            with Vertical(id="editor-view"):
-                editor = TextArea(language="markdown", read_only=False)
-                yield editor
+        
+        with TabbedContent():
+            with TabPane("Explorer", id="tab-explorer"):
+                with Horizontal():
+                    yield DirectoryTree(self.project.root_path, id="tree-view")
+                    with Vertical(id="editor-view"):
+                        editor = TextArea(language="markdown", read_only=False)
+                        yield editor
+            
+            with TabPane("Chat", id="tab-chat"):
+                yield ChatTab()
+                
+            with TabPane("Tasks", id="tab-tasks"):
+                yield TaskBoardTab()
+                
+            with TabPane("SDD Hub", id="tab-sdd"):
+                yield SDDHubTab(root_path=self.project.root_path)
+                
         yield Footer()
 
     def on_directory_tree_file_selected(self, event: DirectoryTree.FileSelected) -> None:
-        """Handle file selection from the interactive tree."""
-        try:
-            path = Path(event.path)
-            content = path.read_text(encoding="utf-8")
-            editor = self.query_one(TextArea)
-            editor.text = content
-            self.current_file = path
-            editor.focus()
-            self.notify(f"Opened {path.name}")
-        except Exception as e:
-            self.notify(f"Could not open file: {e}", severity="error")
+        """Handle file selection from the main interactive tree."""
+        # Only handle if it's the main tree, SDD Hub has its own handler
+        if event.control.id == "tree-view":
+            try:
+                path = Path(event.path)
+                content = path.read_text(encoding="utf-8")
+                editor = self.query_one(TextArea)
+                editor.text = content
+                self.current_file = path
+                editor.focus()
+                self.notify(f"Opened {path.name}")
+            except Exception as e:
+                self.notify(f"Could not open file: {e}", severity="error")
 
     def action_save(self) -> None:
         """Save the current editor content to the file."""
