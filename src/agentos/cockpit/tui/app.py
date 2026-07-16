@@ -11,6 +11,7 @@ from agentos.cockpit.tui.runner import RunnerTab, IDE_THEME
 from agentos.cockpit.tui.sdd import SDDHubTab
 from agentos.cockpit.tui.doctor import DoctorTab
 from agentos.cockpit.tui.about import AboutTab
+from agentos.cockpit.tui.terminal import TerminalTab
 
 # Default tab order — user can reorder with [ and ]
 DEFAULT_TABS: list[tuple[str, str]] = [
@@ -20,6 +21,7 @@ DEFAULT_TABS: list[tuple[str, str]] = [
     ("tab-runner",   "Runner"),
     ("tab-sdd",      "SDD Hub"),
     ("tab-doctor",   "🩺 Doctor"),
+    ("tab-terminal", "🖥️ Terminal"),
     ("tab-about",    "❓ About"),
 ]
 
@@ -50,6 +52,7 @@ class AkiCockpitApp(App):
         ("5",       "goto_tab('5')",  "Tab 5"),
         ("6",       "goto_tab('6')",  "Tab 6"),
         ("7",       "goto_tab('7')",  "Tab 7"),
+        ("8",       "goto_tab('8')",  "Tab 8"),
     ]
 
     def __init__(self, project: ProjectRef, *args, **kwargs):
@@ -104,6 +107,10 @@ class AkiCockpitApp(App):
         elif tab_id == "tab-doctor":
             with TabPane(label, id=tab_id):
                 yield DoctorTab(root_path=self.project.root_path)
+
+        elif tab_id == "tab-terminal":
+            with TabPane(label, id=tab_id):
+                yield TerminalTab(cwd=self.project.root_path)
 
         elif tab_id == "tab-about":
             with TabPane(label, id=tab_id):

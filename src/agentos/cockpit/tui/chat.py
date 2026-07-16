@@ -1,53 +1,60 @@
-"""Multi-session Agent Chat tab with persistent per-session history."""
+"""Multi-session Agent Chat tab — connected to the real Aki agent via stream_chat."""
 from __future__ import annotations
 
+import asyncio
 import uuid
 from dataclasses import dataclass, field
-from typing import Callable
+from pathlib import Path
 
-from textual import on
+from textual import on, work
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widget import Widget
 from textual.widgets import Button, Input, Label, ListItem, ListView, RichLog, Static
 
-from agentos.cockpit.tui.task_model import PRIORITY_ICON, get_categories, stats
+from agentos.cockpit.tui.task_model import get_categories, stats
 
 
 # ── Data model ────────────────────────────────────────────────────────────────
 
 @dataclass
 class ChatMessage:
-    role: str  # "user" | "agent"
+    role: str   # "user" | "agent"
     text: str
 
 
 @dataclass
 class ChatSession:
     name: str
+    project: str = "cockpit"
     id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
+    session_id: str = field(default_factory=lambda: f"sess_{uuid.uuid4().hex[:8]}")
     messages: list[ChatMessage] = field(default_factory=list)
 
 
-# Global session store
-_sessions: list[ChatSession] = [
-    ChatSession(name="Session 1"),
-]
-_active_id: str = _sessions[0].id
+_sessions: list[ChatSession] = [ChatSession(name="Session 1")]
 
 
 def get_sessions() -> list[ChatSession]:
     return _sessions
 
 
-def get_active() -> ChatSession:
-    for s in _sessions:
-        if s.id == _active_id:
-            return s
-    return _sessions[0]
+# ── Agent singleton (lazy) ─────────────────────────────────────────────────────
+
+_agent = None
+
+def _get_agent():
+    global _agent
+    if _agent is None:
+        try:
+            from agentos.agent.core import get_agent
+            _agent = get_agent()
+        except Exception as e:
+            return None, str(e)
+    return _agent, None
 
 
-# ── Task summary for the sidebar ──────────────────────────────────────────────
+# ── Task summary ───────────────────────────────────────────────────────────────
 
 def _build_summary_text() -> str:
     try:
@@ -90,7 +97,7 @@ class SessionItem(ListItem):
 # ── Main Chat Tab ─────────────────────────────────────────────────────────────
 
 class ChatTab(Widget):
-    """Multi-session Agent Chat tab."""
+    """Multi-session chat tab connected to the Aki agent via stream_chat."""
 
     DEFAULT_CSS = """
     ChatTab {
@@ -98,7 +105,6 @@ class ChatTab(Widget):
         height: 1fr;
         width: 1fr;
     }
-    /* ── Session sidebar ── */
     #session-panel {
         width: 22;
         height: 1fr;
@@ -113,19 +119,16 @@ class ChatTab(Widget):
         text-style: bold;
         color: cyan;
     }
-    #session-list {
-        height: 1fr;
-    }
+    #session-list { height: 1fr; }
     #session-btn-row {
         height: 3;
         layout: horizontal;
         border-top: solid $accent-darken-1;
         background: $panel;
     }
-    #new-session-btn  { width: 1fr; }
-    #del-session-btn  { width: 1fr; }
+    #new-session-btn { width: 1fr; }
+    #del-session-btn { width: 1fr; }
 
-    /* ── Chat area ── */
     #chat-area {
         width: 1fr;
         height: 1fr;
@@ -137,14 +140,25 @@ class ChatTab(Widget):
         border-bottom: solid $accent;
         padding: 1 2;
         color: $text;
+        layout: horizontal;
     }
-    #chat-log {
-        height: 1fr;
-        border-bottom: solid $accent-darken-1;
+    #chat-header-title { width: 1fr; }
+    #agent-status {
+        width: 16;
+        color: $text-muted;
+        margin: 0 1 0 0;
     }
-    #chat-input { dock: bottom; }
+    #chat-log { height: 1fr; }
+    #chat-input-row {
+        height: 3;
+        layout: horizontal;
+        border-top: solid $accent-darken-1;
+        background: $panel;
+        padding: 0 1;
+    }
+    #chat-input { width: 1fr; }
+    #send-btn   { width: 8; }
 
-    /* ── Task sidebar ── */
     #task-panel {
         width: 24;
         height: 1fr;
@@ -163,28 +177,27 @@ class ChatTab(Widget):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._active_id = _sessions[0].id
+        self._streaming  = False
 
     def compose(self) -> ComposeResult:
         active = self._get_active()
 
-        # ── Session sidebar ────────────────────────────────────────────────────
         with Vertical(id="session-panel"):
             yield Static("💬 Chats", id="session-panel-header", markup=True)
-            yield ListView(
-                *[SessionItem(s) for s in _sessions],
-                id="session-list",
-            )
+            yield ListView(*[SessionItem(s) for s in _sessions], id="session-list")
             with Horizontal(id="session-btn-row"):
                 yield Button("+ New", id="new-session-btn", variant="success")
                 yield Button("🗑 Del", id="del-session-btn", variant="error")
 
-        # ── Chat messages area ─────────────────────────────────────────────────
         with Vertical(id="chat-area"):
-            yield Static(f"[bold]{active.name}[/bold]", id="chat-header", markup=True)
-            yield RichLog(id="chat-log", highlight=True, markup=True)
-            yield Input(placeholder="Message the agent… (Enter to send)", id="chat-input")
+            with Horizontal(id="chat-header"):
+                yield Static(f"[bold]{active.name}[/bold]", id="chat-header-title", markup=True)
+                yield Static("● ready", id="agent-status", markup=True)
+            yield RichLog(id="chat-log", highlight=True, markup=True, auto_scroll=True)
+            with Horizontal(id="chat-input-row"):
+                yield Input(placeholder="Message Aki… (Enter to send)", id="chat-input")
+                yield Button("Send", id="send-btn", variant="primary")
 
-        # ── Task summary sidebar ───────────────────────────────────────────────
         with Vertical(id="task-panel"):
             yield Label("📋 Tasks", id="task-panel-title")
             yield Static(_build_summary_text(), id="task-summary", markup=True)
@@ -201,8 +214,7 @@ class ChatTab(Widget):
 
     def _switch_to(self, session: ChatSession) -> None:
         self._active_id = session.id
-        header = self.query_one("#chat-header", Static)
-        header.update(f"[bold]{session.name}[/bold]")
+        self.query_one("#chat-header-title", Static).update(f"[bold]{session.name}[/bold]")
         self._load_session(session)
         self._refresh_session_list()
 
@@ -210,17 +222,17 @@ class ChatTab(Widget):
         log = self.query_one("#chat-log", RichLog)
         log.clear()
         if not session.messages:
-            log.write(f"[bold green]Agent:[/bold green] Hello! This is [bold]{session.name}[/bold]. How can I help?")
+            log.write("[bold green]Aki:[/bold green] Hello! I'm ready. How can I help you today?")
+            log.write(f"[dim]Session: {session.session_id} | Project: {session.project}[/dim]")
         else:
             for msg in session.messages:
                 if msg.role == "user":
                     log.write(f"[bold cyan]You:[/bold cyan] {msg.text}")
                 else:
-                    log.write(f"[bold green]Agent:[/bold green] {msg.text}")
+                    log.write(f"[bold green]Aki:[/bold green] {msg.text}")
 
     def _refresh_session_list(self) -> None:
-        lv = self.query_one("#session-list", ListView)
-        for item in lv.query(SessionItem):
+        for item in self.query(SessionItem):
             item.refresh_label(self._active_id)
 
     # ── New / Delete session ──────────────────────────────────────────────────
@@ -230,8 +242,7 @@ class ChatTab(Widget):
         n = len(_sessions) + 1
         new_s = ChatSession(name=f"Session {n}")
         _sessions.append(new_s)
-        lv = self.query_one("#session-list", ListView)
-        lv.append(SessionItem(new_s))
+        self.query_one("#session-list", ListView).append(SessionItem(new_s))
         self._switch_to(new_s)
         self.app.notify(f"Created {new_s.name}")
 
@@ -242,7 +253,6 @@ class ChatTab(Widget):
             return
         active = self._get_active()
         _sessions.remove(active)
-        # Switch to first remaining session
         lv = self.query_one("#session-list", ListView)
         for item in list(lv.query(SessionItem)):
             if item._session.id == active.id:
@@ -254,30 +264,95 @@ class ChatTab(Widget):
     # ── Sending messages ──────────────────────────────────────────────────────
 
     @on(Input.Submitted, "#chat-input")
-    def _on_send(self, event: Input.Submitted) -> None:
-        text = event.value.strip()
+    @on(Button.Pressed, "#send-btn")
+    def _on_send(self, event) -> None:
+        if self._streaming:
+            return
+        inp  = self.query_one("#chat-input", Input)
+        text = inp.value.strip()
         if not text:
             return
-        event.input.value = ""
+        inp.value = ""
+
         session = self._get_active()
         log     = self.query_one("#chat-log", RichLog)
 
-        # Save and display user message
         session.messages.append(ChatMessage(role="user", text=text))
         log.write(f"[bold cyan]You:[/bold cyan] {text}")
-
-        # Placeholder agent response — hook real agent here
-        reply = f"Got it! (Connecting to Aki agent backend soon 🚀)"
-        session.messages.append(ChatMessage(role="agent", text=reply))
-        log.write(f"[bold green]Agent:[/bold green] {reply}")
-
         self._refresh_session_list()
 
-    # ── Tab focus refresh ─────────────────────────────────────────────────────
+        self._stream_agent_response(text, session)
 
-    def on_focus(self) -> None:
+    @work(thread=True)
+    def _stream_agent_response(self, user_input: str, session: ChatSession) -> None:
+        """Call the real agent and stream tokens back to the RichLog."""
+        log    = self.query_one("#chat-log", RichLog)
+        status = self.query_one("#agent-status", Static)
+
+        self._streaming = True
+        self.app.call_from_thread(
+            status.update, "[bold yellow]● thinking…[/bold yellow]"
+        )
+
+        agent, err = _get_agent()
+
+        if agent is None:
+            msg = f"Agent unavailable: {err}"
+            self.app.call_from_thread(
+                log.write, f"[bold red]Aki:[/bold red] [dim]{msg}[/dim]"
+            )
+            session.messages.append(ChatMessage(role="agent", text=msg))
+            self.app.call_from_thread(status.update, "[dim]● offline[/dim]")
+            self._streaming = False
+            return
+
+        # Collect the full response by running the async generator in a new event loop
+        full_response = []
+
+        async def _collect():
+            self.app.call_from_thread(
+                log.write, "[bold green]Aki:[/bold green] "
+            )
+            token_buf = []
+            try:
+                async for token in agent.stream_chat(
+                    user_input=user_input,
+                    project=session.project,
+                    session_id=session.session_id,
+                ):
+                    token_buf.append(token)
+                    full_response.append(token)
+                    # Flush to UI every ~50 chars for smooth streaming
+                    combined = "".join(token_buf)
+                    if len(combined) >= 50 or "\n" in combined:
+                        self.app.call_from_thread(log.write, combined)
+                        token_buf.clear()
+                # Flush remaining
+                if token_buf:
+                    self.app.call_from_thread(log.write, "".join(token_buf))
+            except Exception as e:
+                self.app.call_from_thread(
+                    log.write, f"[red][error: {e}][/red]"
+                )
+
         try:
-            self.query_one("#task-summary", Static).update(_build_summary_text())
+            loop = asyncio.new_event_loop()
+            loop.run_until_complete(_collect())
+        finally:
+            loop.close()
+
+        complete = "".join(full_response)
+        session.messages.append(ChatMessage(role="agent", text=complete))
+        self._streaming = False
+        self.app.call_from_thread(status.update, "[bold green]● ready[/bold green]")
+        self.app.call_from_thread(self._refresh_session_list)
+
+        # Refresh task summary in case agent added tasks
+        try:
+            self.app.call_from_thread(
+                self.query_one("#task-summary", Static).update,
+                _build_summary_text()
+            )
         except Exception:
             pass
 
@@ -288,3 +363,9 @@ class ChatTab(Widget):
             if s.id == self._active_id:
                 return s
         return _sessions[0]
+
+    def on_focus(self) -> None:
+        try:
+            self.query_one("#task-summary", Static).update(_build_summary_text())
+        except Exception:
+            pass
