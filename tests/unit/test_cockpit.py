@@ -41,11 +41,21 @@ def test_resolve_project_ref_accepts_marker_root(tmp_path):
     assert project.source == "marker"
 
 
-def test_resolve_project_ref_rejects_plain_directory(tmp_path):
+def test_resolve_project_ref_accepts_plain_directory(tmp_path):
     plain = tmp_path / "notes"
     plain.mkdir()
 
-    assert resolve_project_ref(plain) is None
+    resolved = resolve_project_ref(plain)
+
+    assert resolved is not None
+    assert resolved.key == "notes"
+    assert resolved.source == "manual"
+
+
+def test_resolve_project_ref_rejects_nonexistent_path(tmp_path):
+    missing = tmp_path / "does-not-exist"
+
+    assert resolve_project_ref(missing) is None
 
 
 def test_build_cockpit_snapshot_reads_memory_summary(tmp_path):
@@ -264,14 +274,22 @@ def test_cockpit_without_web_flag_still_renders_terminal_cockpit(tmp_path, monke
     assert "OPERATIONAL COCKPIT" in result.output.upper()
 
 
-def test_root_command_falls_back_to_projects_browse(tmp_path, monkeypatch):
+def test_root_command_opens_cockpit_for_plain_directory(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
     result = runner.invoke(app, [])
 
     assert result.exit_code == 0
+    assert "Projects Browse" not in result.output
+
+
+def test_root_command_falls_back_to_projects_browse_for_missing_path(tmp_path, monkeypatch):
+    missing = tmp_path / "does-not-exist"
+
+    result = runner.invoke(app, ["cockpit", "--path", str(missing)])
+
+    assert result.exit_code == 0
     assert "Projects Browse" in result.output
-    assert "does not resolve to a recognizable project root" in result.output
     assert "aki cockpit" in result.output
     assert "/absolute/path/to/project" in result.output
 

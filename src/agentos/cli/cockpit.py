@@ -131,7 +131,7 @@ def render_default_entry(console: Console, start_path: Optional[Path] = None) ->
         render_projects_browse(
             console,
             current_path=(start_path or Path.cwd()).resolve(),
-            reason="Current directory does not resolve to a recognizable project root.",
+            reason="The current directory could not be found on disk.",
         )
         return
     render_cockpit_overview(console, project)
@@ -189,7 +189,17 @@ def render_cockpit_detail(console: Console, project: ProjectRef, section: str) -
 
 def resolve_project_ref(start_path: Optional[Path] = None) -> ProjectRef | None:
     candidate = (start_path or Path.cwd()).expanduser().resolve()
+
+    # Only genuinely unresolvable paths (nonexistent paths) fall through to
+    # the Projects Browse screen. This mirrors detect_project()'s
+    # permissiveness (src/agentos/mcp/project.py) so `aki cockpit` works in
+    # any real directory, the same way `aki chat`/`aki interactive` do.
+    if not candidate.exists():
+        return None
+
     current = candidate if candidate.is_dir() else candidate.parent
+    if not current.is_dir():
+        return None
 
     git_root = _find_git_root(current)
     if git_root is not None and git_root.name:
@@ -197,6 +207,9 @@ def resolve_project_ref(start_path: Optional[Path] = None) -> ProjectRef | None:
 
     if _has_project_markers(current) and current.name:
         return ProjectRef(key=current.name, root_path=current, source="marker")
+
+    if current.name:
+        return ProjectRef(key=current.name, root_path=current, source="manual")
 
     return None
 

@@ -842,7 +842,7 @@ def cockpit_callback(
             render_projects_browse(
                 console,
                 current_path=(path or Path.cwd()).resolve(),
-                reason="The requested path is not a recognizable project root.",
+                reason="The requested path does not exist.",
             )
             return
         if interactive:
@@ -859,7 +859,7 @@ def _require_cockpit_project(ctx: typer.Context):
         render_projects_browse(
             console,
             current_path=((ctx.obj or {}).get("path") or Path.cwd()).resolve(),
-            reason="The requested path is not a recognizable project root.",
+            reason="The requested path does not exist.",
         )
         raise typer.Exit(0)
     return project
