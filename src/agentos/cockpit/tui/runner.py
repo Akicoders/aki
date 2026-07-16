@@ -1,4 +1,4 @@
-"""Code runner tab — select a .py or .md file from the tree and run/preview it."""
+"""Code runner tab — IDE-style file editor with syntax highlighting and Python execution."""
 from __future__ import annotations
 
 import io
@@ -13,6 +13,28 @@ from textual.widget import Widget
 from textual.widgets import Button, Markdown, RichLog, Static, TextArea
 
 from agentos.cockpit.tui.components import FilteredDirectoryTree
+
+# Map file extensions -> TextArea language identifiers
+LANG_MAP: dict[str, str] = {
+    ".py":   "python",
+    ".js":   "javascript",
+    ".ts":   "javascript",
+    ".jsx":  "javascript",
+    ".tsx":  "javascript",
+    ".css":  "css",
+    ".html": "html",
+    ".json": "json",
+    ".md":   "markdown",
+    ".yaml": "yaml",
+    ".yml":  "yaml",
+    ".toml": "toml",
+    ".sh":   "bash",
+    ".bash": "bash",
+    ".sql":  "sql",
+}
+
+# IDE-style theme for TextArea
+IDE_THEME = "vscode_dark"
 
 
 class RunnerTab(Widget):
@@ -78,7 +100,13 @@ class RunnerTab(Widget):
             with Horizontal(id="runner-toolbar"):
                 yield Static("Select a [bold].py[/bold] or [bold].md[/bold] file from the tree →", id="file-label", markup=True)
                 yield Button("▶ Run", id="run-btn", variant="success", disabled=True)
-            yield TextArea("", id="editor-pane", language="python")
+            yield TextArea(
+                "",
+                id="editor-pane",
+                language="python",
+                theme=IDE_THEME,
+                show_line_numbers=True,
+            )
             yield RichLog(id="output-log", highlight=True, markup=True)
             with ScrollableContainer(id="preview-scroll"):
                 yield Markdown("", id="md-preview")
@@ -103,12 +131,21 @@ class RunnerTab(Widget):
 
         self._current_file = path
         editor = self.query_one("#editor-pane", TextArea)
-        editor.text = content
-        label = self.query_one("#file-label", Static)
+        label  = self.query_one("#file-label", Static)
+        ext    = path.suffix.lower()
+        lang   = LANG_MAP.get(ext, "")
 
-        if path.suffix == ".py":
+        # Apply language — only set if tree-sitter supports it
+        try:
+            editor.language = lang or None  # type: ignore[assignment]
+        except Exception:
+            editor.language = None  # type: ignore[assignment]
+
+        editor.text  = content
+        editor.theme = IDE_THEME
+
+        if ext == ".py":
             self._mode = "python"
-            editor.language = "python"
             self._set_output_mode("log")
             label.update(f"[bold cyan]🐍 {path.name}[/bold cyan]  [dim]Ctrl+R to run[/dim]")
             log = self.query_one("#output-log", RichLog)
@@ -116,9 +153,8 @@ class RunnerTab(Widget):
             log.write(f"[dim]Loaded [bold]{path.name}[/bold] — press ▶ Run or Ctrl+R.[/dim]")
             self.query_one("#run-btn", Button).disabled = False
 
-        elif path.suffix == ".md":
+        elif ext == ".md":
             self._mode = "markdown"
-            editor.language = "markdown"
             self._set_output_mode("preview")
             label.update(f"[bold magenta]📝 {path.name}[/bold magenta]  [dim]live preview[/dim]")
             self.query_one("#md-preview", Markdown).update(content)
@@ -126,12 +162,11 @@ class RunnerTab(Widget):
 
         else:
             self._mode = "other"
-            editor.language = "python"
             self._set_output_mode("log")
-            label.update(f"[dim]{path.name}[/dim]")
+            label.update(f"[bold]{path.name}[/bold]  [dim]{lang or 'plain text'}[/dim]")
             self.query_one("#run-btn", Button).disabled = True
 
-        self.app.notify(f"Opened {path.name}")
+        self.app.notify(f"Opened {path.name}  [{lang or 'text'}]")
 
     def on_text_area_changed(self, event: TextArea.Changed) -> None:
         if self._mode == "markdown":

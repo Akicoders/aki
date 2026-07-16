@@ -7,8 +7,9 @@ from agentos.cli.cockpit import ProjectRef
 
 from agentos.cockpit.tui.chat import ChatTab
 from agentos.cockpit.tui.kanban import KanbanTab
-from agentos.cockpit.tui.runner import RunnerTab
+from agentos.cockpit.tui.runner import RunnerTab, IDE_THEME
 from agentos.cockpit.tui.sdd import SDDHubTab
+from agentos.cockpit.tui.doctor import DoctorTab
 
 # Default tab order — user can reorder with [ and ]
 DEFAULT_TABS: list[tuple[str, str]] = [
@@ -17,6 +18,7 @@ DEFAULT_TABS: list[tuple[str, str]] = [
     ("tab-kanban",   "Kanban"),
     ("tab-runner",   "Runner"),
     ("tab-sdd",      "SDD Hub"),
+    ("tab-doctor",   "🩺 Doctor"),
 ]
 
 
@@ -72,7 +74,12 @@ class AkiCockpitApp(App):
                 with Horizontal():
                     yield FilteredDirectoryTree(self.project.root_path, id="tree-view")
                     with Vertical(id="editor-view"):
-                        yield TextArea(language="markdown", read_only=False)
+                        yield TextArea(
+                            language="markdown",
+                            read_only=False,
+                            theme=IDE_THEME,
+                            show_line_numbers=True,
+                        )
 
         elif tab_id == "tab-chat":
             with TabPane(label, id=tab_id):
@@ -89,6 +96,10 @@ class AkiCockpitApp(App):
         elif tab_id == "tab-sdd":
             with TabPane(label, id=tab_id):
                 yield SDDHubTab(root_path=self.project.root_path)
+
+        elif tab_id == "tab-doctor":
+            with TabPane(label, id=tab_id):
+                yield DoctorTab(root_path=self.project.root_path)
 
     # ── Tab reordering ────────────────────────────────────────────────────────
 
