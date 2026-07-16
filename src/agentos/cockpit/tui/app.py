@@ -52,7 +52,7 @@ class AkiCockpitApp(App):
                 yield KanbanTab()
 
             with TabPane("Runner", id="tab-runner"):
-                yield RunnerTab()
+                yield RunnerTab(root_path=self.project.root_path)
 
             with TabPane("SDD Hub", id="tab-sdd"):
                 yield SDDHubTab(root_path=self.project.root_path)

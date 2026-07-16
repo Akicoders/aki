@@ -1,52 +1,33 @@
-"""Code runner tab — execute Python and preview Markdown."""
+"""Code runner tab — select a .py or .md file from the tree and run/preview it."""
 from __future__ import annotations
 
 import io
 import sys
 import traceback
+from pathlib import Path
 
 from textual import on
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical
-from textual.widgets import Button, Label, Markdown, RichLog, Select, TextArea
+from textual.containers import Horizontal, Vertical, ScrollableContainer
+from textual.widgets import Button, Label, Markdown, RichLog, Static, TextArea
 
-STARTER_PYTHON = '''\
-# Python runs here — use print() to see output
-import sys
-
-def greet(name: str) -> str:
-    return f"Hello, {name}!"
-
-print(greet("Aki"))
-print(f"Python {sys.version}")
-'''
-
-STARTER_MARKDOWN = '''\
-# Welcome to the SDD Previewer
-
-Write **Markdown** here and see it rendered live.
-
-## Features
-- Headers
-- **Bold** and _italic_
-- `inline code`
-- Lists
-
-```python
-print("Hello from a code block!")
-```
-'''
-
-MODE_PYTHON   = "python"
-MODE_MARKDOWN = "markdown"
+from agentos.cockpit.tui.components import FilteredDirectoryTree
 
 
-class RunnerTab(Vertical):
-    """Code runner: Python execution and Markdown live preview."""
+class RunnerTab(Horizontal):
+    """Select a .py or .md file — Python runs, Markdown renders."""
 
     DEFAULT_CSS = """
     RunnerTab {
-        padding: 0;
+        height: 100%;
+    }
+    #runner-tree {
+        width: 28;
+        border-right: solid $accent-darken-1;
+    }
+    #runner-right {
+        width: 1fr;
+        height: 100%;
     }
     #runner-toolbar {
         height: 3;
@@ -55,34 +36,29 @@ class RunnerTab(Vertical):
         layout: horizontal;
         padding: 0 1;
     }
-    #runner-toolbar Label {
-        margin: 1 1 0 0;
+    #file-label {
+        width: 1fr;
+        margin: 1 0 0 0;
         color: $text-muted;
-    }
-    #mode-select {
-        width: 22;
     }
     #run-btn {
         width: 12;
-        margin-left: 1;
     }
-    #clear-btn {
-        width: 10;
-    }
-    #runner-body {
+    #editor-pane {
         height: 1fr;
-        layout: horizontal;
+        border-bottom: solid $accent-darken-1;
     }
-    #code-editor {
-        width: 1fr;
-        height: 100%;
-        border-right: solid $accent-darken-1;
-    }
-    #output-pane {
-        width: 1fr;
-        height: 100%;
+    #preview-scroll {
+        height: 1fr;
         overflow-y: auto;
-        padding: 1 1;
+        padding: 1 2;
+    }
+    #md-preview {
+        height: auto;
+    }
+    #output-log {
+        height: 1fr;
+        overflow-y: auto;
     }
     #runner-hint {
         height: 1;
@@ -92,144 +68,145 @@ class RunnerTab(Vertical):
     }
     """
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, root_path: Path, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self._mode: str = MODE_PYTHON
+        self._root_path = root_path
+        self._current_file: Path | None = None
+        self._mode: str = "none"  # "python" | "markdown" | "none"
 
     def compose(self) -> ComposeResult:
-        # ── Toolbar ────────────────────────────────────────────────────────────
-        with Horizontal(id="runner-toolbar"):
-            yield Label("Mode:")
-            yield Select(
-                [(MODE_PYTHON, "🐍 Python"), (MODE_MARKDOWN, "📝 Markdown Preview")],
-                value=MODE_PYTHON,
-                id="mode-select",
-            )
-            yield Button("▶ Run", id="run-btn", variant="success")
-            yield Button("🗑 Clear", id="clear-btn", variant="default")
+        yield FilteredDirectoryTree(self._root_path, id="runner-tree")
 
-        # ── Editor + Output ────────────────────────────────────────────────────
-        with Horizontal(id="runner-body"):
-            yield TextArea(
-                STARTER_PYTHON,
-                language="python",
-                id="code-editor",
-            )
-            yield RichLog(id="output-pane", highlight=True, markup=True)
+        with Vertical(id="runner-right"):
+            # Toolbar
+            with Horizontal(id="runner-toolbar"):
+                yield Static("Select a .py or .md file from the tree", id="file-label", markup=True)
+                yield Button("▶ Run", id="run-btn", variant="success", disabled=True)
 
-        yield Label(
-            " [Ctrl+R] run  [Ctrl+L] clear  | Left=editor  Right=output",
-            id="runner-hint",
-            markup=True,
-        )
+            # Editor (always visible, shows file content)
+            yield TextArea("", id="editor-pane", language="python")
+
+            # Output: either RichLog (Python) or Markdown preview
+            yield RichLog(id="output-log", highlight=True, markup=True)
+            with ScrollableContainer(id="preview-scroll"):
+                yield Markdown("", id="md-preview")
+
+            yield Static(
+                " [Ctrl+R] run python  |  .md files preview automatically",
+                id="runner-hint",
+                markup=True,
+            )
 
     def on_mount(self) -> None:
-        log = self.query_one("#output-pane", RichLog)
-        log.write("[bold green]Ready.[/bold green] Press [bold]▶ Run[/bold] or [bold]Ctrl+R[/bold] to execute.")
+        # Start with preview hidden, log visible
+        self._set_mode("none")
 
-    # ── Mode switching ─────────────────────────────────────────────────────────
+    # ── File selection ─────────────────────────────────────────────────────────
 
-    @on(Select.Changed, "#mode-select")
-    def _on_mode_change(self, event: Select.Changed) -> None:
-        self._mode = str(event.value)
-        editor = self.query_one("#code-editor", TextArea)
-        output = self.query_one("#output-pane", RichLog)
-        output.clear()
-
-        if self._mode == MODE_PYTHON:
-            editor.language = "python"
-            if not editor.text.strip():
-                editor.text = STARTER_PYTHON
-            output.write("[bold green]Python mode[/bold green] — press ▶ Run to execute.")
-
-        elif self._mode == MODE_MARKDOWN:
-            editor.language = "markdown"
-            if not editor.text.strip():
-                editor.text = STARTER_MARKDOWN
-            self._render_markdown()
-
-    # ── Run / Clear ────────────────────────────────────────────────────────────
-
-    @on(Button.Pressed, "#run-btn")
-    def _on_run(self) -> None:
-        self._execute()
-
-    @on(Button.Pressed, "#clear-btn")
-    def _on_clear(self) -> None:
-        self.query_one("#output-pane", RichLog).clear()
-
-    def on_key(self, event) -> None:
-        if event.key == "ctrl+r":
-            self._execute()
-        elif event.key == "ctrl+l":
-            self.query_one("#output-pane", RichLog).clear()
-
-    # ── Markdown live preview while typing ─────────────────────────────────────
-
-    def on_text_area_changed(self, event: TextArea.Changed) -> None:
-        if self._mode == MODE_MARKDOWN:
-            self._render_markdown()
-
-    def _render_markdown(self) -> None:
-        code = self.query_one("#code-editor", TextArea).text
-        log  = self.query_one("#output-pane", RichLog)
-        log.clear()
-        # We mount a temporary Markdown widget to render — use markup shortcut
-        log.write("[dim]── Rendered Preview ──[/dim]")
-        # RichLog can't render Markdown directly, so we mount inline
-        self._mount_markdown_preview(code)
-
-    def _mount_markdown_preview(self, content: str) -> None:
-        """Replace output pane with a live Markdown widget."""
-        output_pane = self.query_one("#output-pane")
-        # Swap RichLog for Markdown widget if in markdown mode
-        # We keep them both and show/hide based on mode
-        pass  # Handled via _render_python / display
-
-    # ── Python execution ───────────────────────────────────────────────────────
-
-    def _execute(self) -> None:
-        editor = self.query_one("#code-editor", TextArea)
-        log    = self.query_one("#output-pane", RichLog)
-        code   = editor.text
-
-        if self._mode == MODE_MARKDOWN:
-            log.clear()
-            log.write("[bold yellow]Markdown preview updates as you type.[/bold yellow]")
+    def on_directory_tree_file_selected(self, event: FilteredDirectoryTree.FileSelected) -> None:
+        path = Path(event.path)
+        try:
+            content = path.read_text(encoding="utf-8")
+        except Exception as e:
+            self.app.notify(f"Cannot read file: {e}", severity="error")
             return
 
-        log.clear()
-        log.write("[bold dim]─── Running ───[/bold dim]")
+        self._current_file = path
+        editor = self.query_one("#editor-pane", TextArea)
+        editor.text = content
 
-        # Capture stdout + stderr
+        label = self.query_one("#file-label", Static)
+
+        if path.suffix == ".py":
+            self._set_mode("python")
+            editor.language = "python"
+            label.update(f"[bold cyan]🐍 {path.name}[/bold cyan]  [dim](Ctrl+R to run)[/dim]")
+            log = self.query_one("#output-log", RichLog)
+            log.clear()
+            log.write(f"[dim]Loaded [bold]{path.name}[/bold] — press [bold]▶ Run[/bold] or Ctrl+R to execute.[/dim]")
+
+        elif path.suffix == ".md":
+            self._set_mode("markdown")
+            editor.language = "markdown"
+            label.update(f"[bold magenta]📝 {path.name}[/bold magenta]  [dim](live preview)[/dim]")
+            self.query_one("#md-preview", Markdown).update(content)
+
+        else:
+            self._set_mode("other")
+            editor.language = "python"  # fallback syntax
+            label.update(f"[dim]{path.name}[/dim]")
+
+        self.app.notify(f"Opened {path.name}")
+
+    # ── Live Markdown preview while editing ────────────────────────────────────
+
+    def on_text_area_changed(self, event: TextArea.Changed) -> None:
+        if self._mode == "markdown":
+            content = self.query_one("#editor-pane", TextArea).text
+            self.query_one("#md-preview", Markdown).update(content)
+
+    # ── Run Python ─────────────────────────────────────────────────────────────
+
+    @on(Button.Pressed, "#run-btn")
+    def _on_run_btn(self) -> None:
+        self._run_python()
+
+    def on_key(self, event) -> None:
+        if event.key == "ctrl+r" and self._mode == "python":
+            self._run_python()
+
+    def _run_python(self) -> None:
+        if self._mode != "python":
+            return
+        code = self.query_one("#editor-pane", TextArea).text
+        log  = self.query_one("#output-log", RichLog)
+        log.clear()
+
+        name = self._current_file.name if self._current_file else "<buffer>"
+        log.write(f"[bold dim]─── Running {name} ───[/bold dim]")
+
         old_stdout, old_stderr = sys.stdout, sys.stderr
-        captured_out = io.StringIO()
-        captured_err = io.StringIO()
-        sys.stdout = captured_out
-        sys.stderr = captured_err
+        sys.stdout = io.StringIO()
+        sys.stderr = io.StringIO()
 
         try:
-            exec(compile(code, "<aki-runner>", "exec"), {})  # noqa: S102
-            out = captured_out.getvalue()
-            err = captured_err.getvalue()
+            exec(compile(code, name, "exec"), {"__file__": str(self._current_file)})  # noqa: S102
+            out = sys.stdout.getvalue()
+            err = sys.stderr.getvalue()
 
-            if out:
-                for line in out.splitlines():
-                    log.write(f"[white]{line}[/white]")
-            if err:
-                for line in err.splitlines():
-                    log.write(f"[yellow]{line}[/yellow]")
+            for line in out.splitlines():
+                log.write(f"[white]{line}[/white]")
+            for line in err.splitlines():
+                log.write(f"[yellow]{line}[/yellow]")
             if not out and not err:
                 log.write("[dim](no output)[/dim]")
-
             log.write("[bold green]✓ Done[/bold green]")
 
         except Exception:
-            tb = traceback.format_exc()
-            for line in tb.splitlines():
+            for line in traceback.format_exc().splitlines():
                 log.write(f"[bold red]{line}[/bold red]")
             log.write("[bold red]✗ Error[/bold red]")
 
         finally:
             sys.stdout = old_stdout
             sys.stderr = old_stderr
+
+    # ── Layout helpers ─────────────────────────────────────────────────────────
+
+    def _set_mode(self, mode: str) -> None:
+        self._mode = mode
+        run_btn      = self.query_one("#run-btn", Button)
+        output_log   = self.query_one("#output-log", RichLog)
+        preview_wrap = self.query_one("#preview-scroll")
+
+        run_btn.disabled = (mode != "python")
+
+        if mode == "python":
+            output_log.display  = True
+            preview_wrap.display = False
+        elif mode == "markdown":
+            output_log.display  = False
+            preview_wrap.display = True
+        else:
+            output_log.display  = True
+            preview_wrap.display = False
