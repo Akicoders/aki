@@ -99,8 +99,8 @@ class DoctorTab(Widget):
     @work(thread=True)
     def _run_checks(self) -> None:
         log = self.query_one("#doctor-log", RichLog)
-        self.call_from_thread(log.clear)
-        self.call_from_thread(
+        self.app.call_from_thread(log.clear)
+        self.app.call_from_thread(
             log.write, "[bold cyan]🩺 Running project health checks…[/bold cyan]\n"
         )
 
@@ -119,14 +119,14 @@ class DoctorTab(Widget):
             sections.setdefault(section, []).append(c)
 
         for section, items in sections.items():
-            self.call_from_thread(
+            self.app.call_from_thread(
                 log.write, f"\n[bold white]── {section} ──────────────────────────[/bold white]"
             )
             for item in items:
                 icon   = STATUS_ICON[item.status]
                 label  = item.name.split("/", 1)[-1] if "/" in item.name else item.name
                 detail = f"  [dim]{item.detail}[/dim]" if item.detail else ""
-                self.call_from_thread(
+                self.app.call_from_thread(
                     log.write, f"  {icon} {label}{detail}"
                 )
 
@@ -134,14 +134,14 @@ class DoctorTab(Widget):
         oks   = sum(1 for c in checks if c.status == "ok")
         warns = sum(1 for c in checks if c.status == "warn")
         fails = sum(1 for c in checks if c.status == "fail")
-        self.call_from_thread(
+        self.app.call_from_thread(
             log.write,
             f"\n[bold]Summary:[/bold] "
             f"[green]{oks} passed[/green]  "
             f"[yellow]{warns} warnings[/yellow]  "
             f"[red]{fails} failed[/red]",
         )
-        self.call_from_thread(
+        self.app.call_from_thread(
             self.app.notify,
             f"Doctor done — {oks}✅ {warns}⚠️  {fails}❌",
         )
