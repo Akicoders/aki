@@ -200,3 +200,47 @@ async def test_chat_scaffolding_addendum_and_destructive_gate_unaffected(monkeyp
     assert scaffolding_addendum_present
     skills.executed == []
     assert "?" in response
+
+
+@pytest.mark.asyncio
+async def test_chat_new_product_no_explicit_profile_forces_planner(monkeypatch):
+    """No explicit profile_id + high-confidence new-product signal -> server
+    forces resolution to the 'planner' profile for that turn's checkpoint."""
+    memory = FakeMemory()
+    qwen = FakeQwenClient()
+    skills = FakeSkills()
+    agent = _make_agent(monkeypatch, memory, qwen, skills)
+
+    await agent.chat(NEW_PRODUCT_INPUT, project="demo", session_id="sess-1", profile_id=None)
+
+    assert len(memory.write_checkpoint_calls) == 1
+    assert memory.write_checkpoint_calls[0]["active_profile_id"] == "planner"
+
+
+@pytest.mark.asyncio
+async def test_chat_new_product_explicit_profile_not_overridden(monkeypatch):
+    """An explicit caller-provided profile_id on a new-product message must
+    win over the forced-planner routing (never override explicit input)."""
+    memory = FakeMemory()
+    qwen = FakeQwenClient([
+        ChatResponse(content="builder ran", tool_calls=[], usage={}, model="fake", finish_reason="stop")
+    ])
+    skills = FakeSkills()
+    agent = _make_agent(monkeypatch, memory, qwen, skills)
+
+    # Turn 1 (short-circuits into the canned SDD suggestion regardless of
+    # profile_id, since a checkpoint doesn't exist yet): profile still
+    # resolves and records as the explicit 'builder', never 'planner'.
+    await agent.chat(NEW_PRODUCT_INPUT, project="demo", session_id="sess-2", profile_id="builder")
+    assert memory.write_checkpoint_calls[0]["active_profile_id"] == "builder"
+
+    # Turn 2, same explicit profile_id + same new-product phrasing: checkpoint
+    # now exists, so the reasoning loop runs -- forced routing still must not
+    # override the explicit 'builder' profile_id.
+    response = await agent.chat(
+        NEW_PRODUCT_INPUT, project="demo", session_id="sess-2", profile_id="builder"
+    )
+
+    assert len(memory.write_checkpoint_calls) == 2
+    assert memory.write_checkpoint_calls[1]["active_profile_id"] == "builder"
+    assert response == "builder ran"

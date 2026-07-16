@@ -311,6 +311,13 @@ class AgentOS:
         if not session_id:
             session_id = f"sess_{uuid.uuid4().hex[:8]}"
 
+        if profile_id is None and _is_new_product_request(user_input):
+            logger.info(
+                f"Routing [{session_id}]: forcing profile 'planner' "
+                "(high-confidence new-product signal, no explicit profile_id)"
+            )
+            profile_id = "planner"
+
         profile = self.agent_registry.resolve(profile_id) if profile_id else None
         _notify_status(status_callback, "Starting turn")
 
