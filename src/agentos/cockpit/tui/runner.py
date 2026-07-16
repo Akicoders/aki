@@ -8,7 +8,9 @@ from pathlib import Path
 
 from textual import on
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, ScrollableContainer
+from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Button, Markdown, RichLog, Static, TextArea
 
@@ -50,6 +52,18 @@ IDE_THEME = "vscode_dark"
 class RunnerTab(Widget):
     """Select a .py or .md file — Python runs, Markdown renders live."""
 
+    can_focus = True
+
+    # Resizable output/preview panel height (cells). Adjusted via keybindings below.
+    OUTPUT_MIN, OUTPUT_MAX, OUTPUT_STEP = 6, 40, 4
+
+    output_height = reactive(12)
+
+    BINDINGS = [
+        Binding("ctrl+up",   "resize_output(1)",  "Output +", show=False),
+        Binding("ctrl+down", "resize_output(-1)", "Output −", show=False),
+    ]
+
     DEFAULT_CSS = """
     RunnerTab {
         layout: horizontal;
@@ -83,9 +97,15 @@ class RunnerTab(Widget):
         height: 1fr;
         border-bottom: solid $accent-darken-1;
     }
-    #output-log { height: 1fr; }
+    #output-log {
+        height: 12;
+        min-height: 6;
+        max-height: 40;
+    }
     #preview-scroll {
-        height: 1fr;
+        height: 12;
+        min-height: 6;
+        max-height: 40;
         overflow-y: auto;
         padding: 1 2;
     }
@@ -122,7 +142,7 @@ class RunnerTab(Widget):
             with ScrollableContainer(id="preview-scroll"):
                 yield Markdown("", id="md-preview")
             yield Static(
-                " [Ctrl+R] run python  |  .md previews automatically as you type",
+                " [Ctrl+R] run python  |  .md previews automatically as you type  |  [Ctrl+↑/↓] resize output",
                 id="runner-hint",
                 markup=True,
             )
@@ -131,6 +151,21 @@ class RunnerTab(Widget):
         self._set_output_mode("log")
         log = self.query_one("#output-log", RichLog)
         log.write("[dim]Select a [bold].py[/bold] or [bold].md[/bold] file from the tree on the left.[/dim]")
+        self.query_one("#output-log").styles.height = self.output_height
+        self.query_one("#preview-scroll").styles.height = self.output_height
+
+    # ── Resizable output panel ──────────────────────────────────────────────────
+
+    def watch_output_height(self, height: int) -> None:
+        try:
+            self.query_one("#output-log").styles.height = height
+            self.query_one("#preview-scroll").styles.height = height
+        except Exception:
+            pass
+
+    def action_resize_output(self, direction: int) -> None:
+        new_height = self.output_height + direction * self.OUTPUT_STEP
+        self.output_height = max(self.OUTPUT_MIN, min(self.OUTPUT_MAX, new_height))
 
     def on_directory_tree_file_selected(self, event: FilteredDirectoryTree.FileSelected) -> None:
         path = Path(event.path)

@@ -37,9 +37,17 @@ class MemoryPolicy(BaseModel):
 
 
 class DelegationMetadata(BaseModel):
-    """Inert future delegation metadata; it does not execute anything."""
+    """Gates whether this profile's `_reasoning_loop` exposes the synthetic
+    `delegate` tool to the model. When `enabled` is False, the tool schema is
+    withheld at depth 0 and `_run_delegation` also refuses to execute as a
+    defensive guard (in case a stale tool-call from conversation history or a
+    mid-conversation profile switch still reaches it).
 
-    enabled: bool = False
+    `strategy` remains reserved for future delegation-strategy selection and
+    has no runtime effect yet.
+    """
+
+    enabled: bool = True
     strategy: str | None = None
 
 

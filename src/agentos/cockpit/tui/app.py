@@ -7,11 +7,13 @@ from agentos.cli.cockpit import ProjectRef
 
 from agentos.cockpit.tui.chat import ChatTab
 from agentos.cockpit.tui.kanban import KanbanTab
-from agentos.cockpit.tui.runner import RunnerTab, IDE_THEME
+from agentos.cockpit.tui.runner import RunnerTab, IDE_THEME, LANG_MAP
 from agentos.cockpit.tui.sdd import SDDHubTab
 from agentos.cockpit.tui.doctor import DoctorTab
 from agentos.cockpit.tui.about import AboutTab
 from agentos.cockpit.tui.terminal import TerminalTab
+from agentos.cockpit.tui.skills import SkillsTab
+from agentos.cockpit.tui.agents import AgentsTab
 
 # Default tab order — user can reorder with [ and ]
 DEFAULT_TABS: list[tuple[str, str]] = [
@@ -20,8 +22,10 @@ DEFAULT_TABS: list[tuple[str, str]] = [
     ("tab-kanban",   "Kanban"),
     ("tab-runner",   "Runner"),
     ("tab-sdd",      "SDD Hub"),
+    ("tab-agents",   "🤖 Agents"),
     ("tab-doctor",   "🩺 Doctor"),
     ("tab-terminal", "🖥️ Terminal"),
+    ("tab-skills",   "🧩 Skills"),
     ("tab-about",    "❓ About"),
 ]
 
@@ -38,6 +42,44 @@ class AkiCockpitApp(App):
         width: 70%;
         height: 100%;
     }
+
+    /* ── Global Button styling — applies to every Button across tabs ────────── */
+    Button {
+        border: round $accent-darken-1;
+        background: $panel;
+        color: $text;
+        padding: 0 2;
+        text-style: bold;
+    }
+    Button:hover {
+        border: round $accent;
+        background: $panel-lighten-1;
+    }
+    Button:focus {
+        border: round $accent;
+        text-style: bold reverse;
+    }
+    Button.-success {
+        border: round $success;
+        color: $success;
+    }
+    Button.-success:hover {
+        background: $success 20%;
+    }
+    Button.-primary {
+        border: round $accent;
+        color: $accent;
+    }
+    Button.-primary:hover {
+        background: $accent 20%;
+    }
+    Button.-error {
+        border: round $error;
+        color: $error;
+    }
+    Button.-error:hover {
+        background: $error 20%;
+    }
     """
 
     BINDINGS = [
@@ -53,6 +95,8 @@ class AkiCockpitApp(App):
         ("6",       "goto_tab('6')",  "Tab 6"),
         ("7",       "goto_tab('7')",  "Tab 7"),
         ("8",       "goto_tab('8')",  "Tab 8"),
+        ("9",       "goto_tab('9')",  "Tab 9"),
+        ("0",       "goto_tab('10')", "Tab 10"),
     ]
 
     def __init__(self, project: ProjectRef, *args, **kwargs):
@@ -82,7 +126,7 @@ class AkiCockpitApp(App):
                     yield FilteredDirectoryTree(self.project.root_path, id="tree-view")
                     with Vertical(id="editor-view"):
                         yield TextArea(
-                            language="markdown",
+                            language="python",
                             read_only=False,
                             theme=IDE_THEME,
                             show_line_numbers=True,
@@ -104,6 +148,10 @@ class AkiCockpitApp(App):
             with TabPane(label, id=tab_id):
                 yield SDDHubTab(root_path=self.project.root_path)
 
+        elif tab_id == "tab-agents":
+            with TabPane(label, id=tab_id):
+                yield AgentsTab()
+
         elif tab_id == "tab-doctor":
             with TabPane(label, id=tab_id):
                 yield DoctorTab(root_path=self.project.root_path)
@@ -111,6 +159,10 @@ class AkiCockpitApp(App):
         elif tab_id == "tab-terminal":
             with TabPane(label, id=tab_id):
                 yield TerminalTab(cwd=self.project.root_path)
+
+        elif tab_id == "tab-skills":
+            with TabPane(label, id=tab_id):
+                yield SkillsTab()
 
         elif tab_id == "tab-about":
             with TabPane(label, id=tab_id):
@@ -171,10 +223,12 @@ class AkiCockpitApp(App):
                 path = Path(event.path)
                 content = path.read_text(encoding="utf-8")
                 editor = self.query_one(TextArea)
-                editor.text = content
+                lang = LANG_MAP.get(path.suffix.lower(), "python")
+                editor.language = lang  # set BEFORE text so tree-sitter parses correctly
+                editor.load_text(content)
                 self.current_file = path
                 editor.focus()
-                self.notify(f"Opened {path.name}")
+                self.notify(f"Opened {path.name}  [{lang}]")
             except Exception as e:
                 self.notify(f"Could not open file: {e}", severity="error")
 
@@ -185,10 +239,12 @@ class AkiCockpitApp(App):
             tc = self.query_one("#main-tabs", TabbedContent)
             tc.active = "tab-explorer"
             editor = self.query_one("#editor-view TextArea", TextArea)
-            editor.text = content
+            lang = LANG_MAP.get(path.suffix.lower(), "python")
+            editor.language = lang  # set BEFORE text so tree-sitter parses correctly
+            editor.load_text(content)
             self.current_file = path
             editor.focus()
-            self.notify(f"Opened {path.name} in Editor")
+            self.notify(f"Opened {path.name} in Editor  [{lang}]")
         except Exception as e:
             self.notify(f"Could not open file: {e}", severity="error")
 

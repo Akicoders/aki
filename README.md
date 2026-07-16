@@ -227,13 +227,64 @@ Use these docs for the full evaluator path:
 
 ## Architecture at a glance
 
-```text
-AI coding host ──stdio MCP──▶ Aki MCP server
-                              ├─ memory handlers
-                              ├─ Qwen client
-                              ├─ project / SDD detection
-                              ├─ audit + cockpit surfaces
-                              └─ SQLite + ChromaDB storage
+```mermaid
+flowchart TD
+    %% Define Styles
+    classDef external fill:#f9f9f9,stroke:#333,stroke-width:2px,color:#333
+    classDef core fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,color:#01579b
+    classDef memory fill:#fff9c4,stroke:#fbc02d,stroke-width:2px,color:#f57f17
+    classDef feature fill:#e8f5e9,stroke:#388e3c,stroke-width:2px,color:#1b5e20
+    classDef llm fill:#f3e5f5,stroke:#8e24aa,stroke-width:2px,color:#4a148c
+    
+    %% External Interfaces
+    subgraph Interfaces ["External Interfaces"]
+        IDE["AI Coding Host<br>(OpenCode, Claude Code)"]:::external
+        CLI["Aki CLI<br>(uv run aki)"]:::external
+    end
+    
+    %% Entrypoints
+    subgraph Entrypoints ["Aki Entrypoints"]
+        MCP["MCP Server<br>(stdio)"]:::core
+        Cockpit["Cockpit Surface"]:::core
+    end
+    
+    %% Core Modules
+    subgraph Core ["Aki Core Modules"]
+        MemH["Memory Handlers"]:::feature
+        QwenC["Qwen Client"]:::feature
+        Audit["Audit System"]:::feature
+        SDD["SDD Detection<br>(Spec-Driven Dev)"]:::feature
+        Agent["Agent Profiles"]:::feature
+        Skills["Skills & Tools"]:::feature
+    end
+    
+    %% Data & External Services
+    subgraph Storage ["Storage & External Services"]
+        SQL["SQLite<br>(Structured Data)"]:::memory
+        Chroma["ChromaDB<br>(Vector Embeddings)"]:::memory
+        QwenAPI["Qwen API<br>(DashScope)"]:::llm
+    end
+    
+    %% Relationships
+    IDE -- "MCP Protocol (stdio)" --> MCP
+    CLI -- "Terminal" --> Cockpit
+    CLI -- "Commands" --> Audit
+    CLI -- "Interactive Sessions" --> Agent
+    
+    MCP --> MemH
+    MCP --> SDD
+    MCP --> Skills
+    
+    Cockpit --> Audit
+    Cockpit --> MemH
+    Cockpit --> SDD
+    
+    MemH --> SQL
+    MemH --> Chroma
+    
+    QwenC --> QwenAPI
+    MemH -. "Extraction & Embeddings" .-> QwenC
+    Agent -. "LLM Inference" .-> QwenC
 ```
 
 Public CLI entry point:

@@ -12,7 +12,10 @@ from textual import on, work
 from textual.app import ComposeResult
 from textual.containers import ScrollableContainer, Vertical, Horizontal
 from textual.widget import Widget
-from textual.widgets import Button, Label, RichLog, Static
+from textual.widgets import Button, Input, Label, RichLog, Select, Static
+
+from agentos.qwen.client import KNOWN_QWEN_MODELS
+from agentos.cockpit.tui.chat import get_active_model, set_active_model
 
 Status = Literal["ok", "warn", "fail", "info", "running"]
 
@@ -68,6 +71,29 @@ class DoctorTab(Widget):
         padding: 0 2;
         color: $text-muted;
     }
+    #model-section {
+        height: auto;
+        background: $panel;
+        border-bottom: solid $accent-darken-1;
+        padding: 1 2;
+        layout: vertical;
+    }
+    #model-title {
+        text-style: bold;
+        color: cyan;
+        margin-bottom: 1;
+    }
+    #model-row {
+        height: 3;
+        layout: horizontal;
+    }
+    #model-select { width: 30; margin-right: 1; }
+    #model-custom-input { width: 24; margin-right: 1; }
+    #model-apply-btn { width: 12; }
+    #model-current {
+        color: $text-muted;
+        margin-top: 1;
+    }
     """
 
     def __init__(self, root_path: Path, *args, **kwargs) -> None:
@@ -78,6 +104,28 @@ class DoctorTab(Widget):
         with Horizontal(id="doctor-header"):
             yield Static("🩺 Project Doctor", id="doctor-title", markup=True)
             yield Button("🔄 Run Checks", id="run-checks-btn", variant="primary")
+
+        current = get_active_model()
+        with Vertical(id="model-section"):
+            yield Static("🧠 Qwen Model", id="model-title", markup=True)
+            with Horizontal(id="model-row"):
+                yield Select(
+                    [(m, m) for m in KNOWN_QWEN_MODELS] + [("Custom…", "__custom__")],
+                    value=current if current in KNOWN_QWEN_MODELS else "__custom__",
+                    id="model-select",
+                    allow_blank=False,
+                )
+                yield Input(
+                    placeholder="custom model id",
+                    value=current if current not in KNOWN_QWEN_MODELS and current else "",
+                    id="model-custom-input",
+                )
+                yield Button("Apply", id="model-apply-btn", variant="success")
+            yield Static(
+                f"Active: [bold]{current or '(config default)'}[/bold]",
+                id="model-current",
+                markup=True,
+            )
 
         with ScrollableContainer(id="doctor-scroll"):
             yield RichLog(id="doctor-log", highlight=True, markup=True)
@@ -91,6 +139,30 @@ class DoctorTab(Widget):
     def on_mount(self) -> None:
         log = self.query_one("#doctor-log", RichLog)
         log.write("[dim]Press [bold]🔄 Run Checks[/bold] to run diagnostics.[/dim]")
+
+    @on(Select.Changed, "#model-select")
+    def _on_model_select_changed(self, event: Select.Changed) -> None:
+        custom_input = self.query_one("#model-custom-input", Input)
+        custom_input.disabled = event.value != "__custom__"
+
+    @on(Button.Pressed, "#model-apply-btn")
+    def _on_apply_model(self) -> None:
+        select = self.query_one("#model-select", Select)
+        custom_input = self.query_one("#model-custom-input", Input)
+
+        if select.value == "__custom__":
+            model = custom_input.value.strip()
+            if not model:
+                self.app.notify("Enter a custom model id first.", severity="warning")
+                return
+        else:
+            model = str(select.value)
+
+        set_active_model(model)
+        self.query_one("#model-current", Static).update(
+            f"Active: [bold]{model}[/bold]"
+        )
+        self.app.notify(f"Qwen model set to {model}")
 
     @on(Button.Pressed, "#run-checks-btn")
     def _on_run(self) -> None:

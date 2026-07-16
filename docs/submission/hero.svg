@@ -1,0 +1,140 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" font-family="'Space Grotesk', 'Inter', system-ui, sans-serif" fill="none">
+  <defs>
+    <!-- Background gradient - warm dark startup vibe -->
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0c0a1a"/>
+      <stop offset="40%" stop-color="#120e24"/>
+      <stop offset="100%" stop-color="#1a0a2e"/>
+    </linearGradient>
+
+    <!-- Accent orbs -->
+    <radialGradient id="orb-purple" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#7c3aed" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#7c3aed" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="orb-blue" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.1"/>
+      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="orb-pink" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#ec4899" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#ec4899" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Logo mark gradient -->
+    <linearGradient id="logo-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7c3aed"/>
+      <stop offset="40%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#ec4899"/>
+    </linearGradient>
+
+    <!-- Text gradient -->
+    <linearGradient id="text-grad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#f1f5f9"/>
+      <stop offset="60%" stop-color="#c4b5fd"/>
+      <stop offset="100%" stop-color="#f9a8d4"/>
+    </linearGradient>
+
+    <!-- Glow filter -->
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="40"/>
+    </filter>
+    <filter id="soft-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="15"/>
+    </filter>
+
+    <!-- Noise texture -->
+    <filter id="noise">
+      <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feBlend in="SourceGraphic" mode="multiply"/>
+    </filter>
+  </defs>
+
+  <!-- Background layer -->
+  <rect width="1200" height="800" fill="url(#bg)"/>
+
+  <!-- Ambient glow orbs -->
+  <circle cx="250" cy="300" r="300" fill="url(#orb-purple)"/>
+  <circle cx="900" cy="250" r="280" fill="url(#orb-blue)"/>
+  <circle cx="650" cy="550" r="250" fill="url(#orb-pink)"/>
+
+  <!-- Subtle radial lines from center -->
+  <g opacity="0.04" stroke="#7c3aed" stroke-width="0.5">
+    <line x1="600" y1="400" x2="100" y2="100"/>
+    <line x1="600" y1="400" x2="1100" y2="100"/>
+    <line x1="600" y1="400" x2="100" y2="700"/>
+    <line x1="600" y1="400" x2="1100" y2="700"/>
+    <line x1="600" y1="400" x2="600" y2="50"/>
+    <line x1="600" y1="400" x2="600" y2="750"/>
+    <line x1="600" y1="400" x2="50" y2="400"/>
+    <line x1="600" y1="400" x2="1150" y2="400"/>
+  </g>
+
+  <!-- ===== LOGO MARK: Abstract "A" / memory node ===== -->
+  <g transform="translate(600, 330)">
+    <!-- Outer ring -->
+    <circle cx="0" cy="0" r="65" stroke="url(#logo-grad)" stroke-width="1.5" opacity="0.3"/>
+    <circle cx="0" cy="0" r="55" stroke="url(#logo-grad)" stroke-width="1" opacity="0.2"/>
+
+    <!-- Three connected nodes forming an A-like shape -->
+    <!-- Top node -->
+    <circle cx="0" cy="-32" r="14" fill="#1a0a2e" stroke="url(#logo-grad)" stroke-width="2"/>
+    <circle cx="0" cy="-32" r="5" fill="#7c3aed">
+      <animate attributeName="opacity" values="0.6;1;0.6" dur="3s" repeatCount="indefinite"/>
+    </circle>
+
+    <!-- Bottom-left node -->
+    <circle cx="-28" cy="24" r="11" fill="#1a0a2e" stroke="url(#logo-grad)" stroke-width="2"/>
+    <circle cx="-28" cy="24" r="4" fill="#3b82f6">
+      <animate attributeName="opacity" values="0.4;1;0.4" dur="4s" repeatCount="indefinite"/>
+    </circle>
+
+    <!-- Bottom-right node -->
+    <circle cx="28" cy="24" r="11" fill="#1a0a2e" stroke="url(#logo-grad)" stroke-width="2"/>
+    <circle cx="28" cy="24" r="4" fill="#ec4899">
+      <animate attributeName="opacity" values="0.5;1;0.5" dur="3.5s" repeatCount="indefinite"/>
+    </circle>
+
+    <!-- Connecting lines between nodes -->
+    <line x1="0" y1="-18" x2="-18" y2="14" stroke="url(#logo-grad)" stroke-width="1.5" opacity="0.4"/>
+    <line x1="0" y1="-18" x2="18" y2="14" stroke="url(#logo-grad)" stroke-width="1.5" opacity="0.4"/>
+    <line x1="-18" y1="14" x2="18" y2="14" stroke="url(#logo-grad)" stroke-width="1" opacity="0.2"/>
+
+    <!-- Bridge connecting the A shape (horizontal bar) -->
+    <line x1="-22" y1="15" x2="22" y2="15" stroke="url(#logo-grad)" stroke-width="1.5" opacity="0.3"/>
+
+    <!-- Glow behind the mark -->
+    <circle cx="0" cy="0" r="40" fill="#7c3aed" opacity="0.06" filter="url(#glow)"/>
+  </g>
+
+  <!-- ===== BRAND NAME ===== -->
+  <text x="600" y="500" text-anchor="middle" font-size="96" font-weight="700" fill="url(#text-grad)" letter-spacing="-3" style="font-feature-settings: 'zero' 1;">Aki</text>
+
+  <!-- ===== TAGLINE ===== -->
+  <text x="600" y="560" text-anchor="middle" font-size="20" font-weight="400" fill="#94a3b8" letter-spacing="4">PROJECT MEMORY THAT STICKS</text>
+
+  <text x="600" y="590" text-anchor="middle" font-size="13" fill="#475569" letter-spacing="2">across sessions · tools · decisions</text>
+
+  <!-- ===== CTA-style pill ===== -->
+  <rect x="470" y="630" width="260" height="40" rx="20" fill="url(#logo-grad)" opacity="0.15"/>
+  <rect x="470" y="630" width="260" height="40" rx="20" stroke="url(#logo-grad)" stroke-width="1" opacity="0.3"/>
+  <text x="600" y="655" text-anchor="middle" font-size="12" fill="#a78bfa" letter-spacing="2" font-weight="500">MCP-native memory agent</text>
+
+  <!-- ===== Subtle decorative stars/dots ===== -->
+  <g fill="#94a3b8" opacity="0.15">
+    <circle cx="180" cy="180" r="1.5"/>
+    <circle cx="950" cy="150" r="1.5"/>
+    <circle cx="150" cy="600" r="1"/>
+    <circle cx="1050" cy="620" r="1.5"/>
+    <circle cx="700" cy="140" r="1"/>
+    <circle cx="400" cy="650" r="1"/>
+    <circle cx="850" cy="680" r="1"/>
+    <circle cx="300" cy="400" r="1.2"/>
+    <circle cx="900" cy="450" r="1.2"/>
+  </g>
+
+  <!-- ===== Bottom bar ===== -->
+  <line x1="200" y1="740" x2="1000" y2="740" stroke="#1e293b" stroke-width="1" opacity="0.5"/>
+  <text x="600" y="768" text-anchor="middle" font-size="9" fill="#334155" letter-spacing="4">QWEN CLOUD GLOBAL AI HACKATHON 2026</text>
+</svg>

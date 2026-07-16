@@ -4,7 +4,41 @@
 {% block header %}{{ key }} — Audit Report{% endblock %}
 
 {% block content %}
-<pre>{{ report_markdown }}</pre>
+<div class="panel" style="display: flex; gap: 1rem; align-items: center; background: rgba(0,0,0,0.1); border-color: var(--border-card);">
+  <span style="font-family: var(--font-title); font-weight: 500;">Audit Mode:</span>
+  <a href="/project/{{ key }}/audit?mode=simple" 
+     id="audit-mode-simple-btn"
+     class="btn {% if mode == 'simple' %}btn-primary{% else %}btn-secondary{% endif %}" 
+     style="padding: 0.5rem 1rem; font-size: 0.9rem;">
+    Simple Audit (Fast)
+  </a>
+  <a href="/project/{{ key }}/audit?mode=deep" 
+     id="audit-mode-deep-btn"
+     class="btn {% if mode == 'deep' %}btn-primary{% else %}btn-secondary{% endif %}" 
+     style="padding: 0.5rem 1rem; font-size: 0.9rem;">
+    Deep Audit (Includes Tests & Lint)
+  </a>
+</div>
 
-<p><a href="/project/{{ key }}">Back to project detail</a> | <a href="/">Back to project list</a></p>
+<div class="panel" style="position: relative;">
+  <h2 style="margin-top: 0;">Audit Findings Report (Mode: {{ mode|upper }})</h2>
+  <pre style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px; border: 1px solid var(--border-card); color: var(--text-main); font-family: monospace; white-space: pre-wrap; word-break: break-word;">{{ report_markdown }}</pre>
+</div>
+
+<div class="panel" style="border-color: var(--accent-blue); background: rgba(14, 165, 233, 0.05); margin-top: 1.5rem;">
+  <h3 style="margin-top: 0; color: var(--accent-blue); font-family: var(--font-title); font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem;">
+    💡 Need to Salvage/Clean this Project?
+  </h3>
+  <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1rem;">
+    If this project has merge conflicts, failing tests, missing configurations, or general chaos, you can run the salvage sequence. Aki will inspect the codebase, outline a recovery plan, and repair files under your supervision.
+  </p>
+  <div style="background: rgba(0,0,0,0.3); padding: 0.8rem 1.2rem; border-radius: 6px; font-family: monospace; font-size: 0.9rem; color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.2);">
+    # 1. Run diagnostic dry-run to generate plan (writes aki_diagnose.md)<br>
+    uv run aki salvage --project {{ key }} --dry-run<br><br>
+    # 2. Execute fixes interactively<br>
+    uv run aki salvage --project {{ key }}
+  </div>
+</div>
+
+<p style="margin-top: 1.5rem;"><a href="/project/{{ key }}" id="audit-report-back-detail-link">Back to project detail</a> | <a href="/" id="audit-report-back-list-link">Back to project list</a></p>
 {% endblock %}

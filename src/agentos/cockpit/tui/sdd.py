@@ -130,6 +130,14 @@ class SDDHubTab(Widget):
         lv = self.query_one("#sdd-status-list", ListView)
         lv.clear()
 
+        # Block re-initialization once SDD is already fully initialized
+        already_initialized = status.has_sdd and not status.missing_artifacts
+        init_btn = self.query_one("#init-sdd-btn", Button)
+        init_btn.disabled = already_initialized
+        init_btn.tooltip = (
+            f"SDD already initialized in {status.sdd_dir}" if already_initialized else None
+        )
+
         # Render status indicators for templates
         for artifact in ["proposal.md", "spec.md", "design.md", "tasks.md"]:
             found = artifact in status.found_artifacts
@@ -154,7 +162,7 @@ class SDDHubTab(Widget):
         if found and target_path.exists():
             self._view_file(target_path)
         else:
-            self.query_one("#sdd-file-title", Static).update(f"[red]Missing: {artifact}[/red]", markup=True)
+            self.query_one("#sdd-file-title", Static).update(f"[red]Missing: {artifact}[/red]")
             self.query_one("#sdd-viewer", Markdown).update(
                 f"# Missing Document: {artifact}\n\n"
                 "This SDD template does not exist yet. Click the **⚡ Initialize SDD Templates** button to create all template files."
@@ -174,7 +182,7 @@ class SDDHubTab(Widget):
                 self.query_one(ScrollableContainer).scroll_home(animate=False)
                 
                 self._selected_file = path
-                self.query_one("#sdd-file-title", Static).update(f"[cyan]📖 {path.name}[/cyan]", markup=True)
+                self.query_one("#sdd-file-title", Static).update(f"[cyan]📖 {path.name}[/cyan]")
                 self.query_one("#edit-sdd-btn", Button).disabled = False
                 self.app.notify(f"Viewing {path.name}")
             except Exception as e:
@@ -182,6 +190,14 @@ class SDDHubTab(Widget):
 
     @on(Button.Pressed, "#init-sdd-btn")
     def _on_init_sdd(self) -> None:
+        status = detect_sdd_artifacts(self.root_path)
+        if status.has_sdd and not status.missing_artifacts:
+            self.app.notify(
+                f"SDD is already initialized in {status.sdd_dir} — nothing to do.",
+                severity="warning",
+            )
+            return
+
         sdd_dir, created = init_sdd_project(self.root_path)
         self._refresh_status()
         

@@ -66,3 +66,17 @@ docker-compose.override.yml
 *.pem
 *.crt
 secrets/
+
+# Pitch/media working files (not part of the product)
+docs/submission/*.mp4
+docs/submission/*.wav
+docs/submission/*.mp3
+docs/submission/generate_audio.py
+docs/submission/generate_final_pitch*.py
+docs/submission/mix_music.py
+docs/submission/qwen_tts.py
+docs/submission/trim_video.py
+docs/submission/test_cosyvoice.py
+docs/submission/test_qwen*.py
+docs/submission/test_voices_es.py
+docs/submission/Aki Pitch Video.html

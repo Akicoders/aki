@@ -1,0 +1,377 @@
+{% extends "base.html" %}
+
+{% block title %}Aki Cockpit - {{ key }} SDD Hub{% endblock %}
+{% block header %}{{ key }} — SDD Hub{% endblock %}
+
+{% block head %}
+<style>
+  .sdd-status-bar {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+  }
+  
+  .sdd-status-card {
+    flex: 1;
+    min-width: 200px;
+    padding: 1rem;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-card);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .tabs-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .tabs-header {
+    display: flex;
+    gap: 0.5rem;
+    border-bottom: 1px solid var(--border-card);
+    padding-bottom: 0.5rem;
+  }
+
+  .tab-btn {
+    padding: 0.75rem 1.5rem;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-muted);
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: var(--font-title);
+    font-weight: 500;
+    transition: all 0.2s ease;
+  }
+
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .tab-btn.active {
+    color: var(--accent);
+    background: var(--accent-glow);
+    border-color: rgba(88, 166, 255, 0.3);
+    font-weight: 600;
+  }
+
+  .tab-content {
+    display: none;
+    animation: fadeIn 0.3s ease;
+  }
+
+  .tab-content.active {
+    display: block;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .artifact-viewer {
+    min-height: 300px;
+  }
+
+  .empty-artifact {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 4rem 2rem;
+    color: var(--text-muted);
+    text-align: center;
+    background: rgba(255, 255, 255, 0.01);
+    border: 1px dashed var(--border-card);
+    border-radius: 8px;
+  }
+
+  .empty-artifact h4 {
+    margin: 0 0 0.5rem 0;
+    color: var(--text-main);
+    font-family: var(--font-title);
+  }
+
+  /* Tasks Checklist Styles */
+  .checklist-summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    padding: 0.75rem 1rem;
+    background: rgba(88, 166, 255, 0.05);
+    border: 1px solid rgba(88, 166, 255, 0.15);
+    border-radius: 8px;
+  }
+
+  .progress-container {
+    flex-grow: 1;
+    margin-left: 2rem;
+    margin-right: 2rem;
+    background: rgba(255, 255, 255, 0.08);
+    height: 8px;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #1f6feb, #58a6ff);
+    width: 0%;
+    transition: width 0.4s ease;
+  }
+
+  .task-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .task-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-card);
+    border-radius: 8px;
+    transition: all 0.2s ease;
+  }
+
+  .task-item:hover {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.15);
+  }
+
+  .task-item.completed {
+    border-color: rgba(63, 185, 80, 0.2);
+    background: rgba(63, 185, 80, 0.02);
+  }
+
+  .task-checkbox-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 1.25rem;
+  }
+
+  .task-checkbox {
+    width: 1.2rem;
+    height: 1.2rem;
+    border-radius: 4px;
+    border: 2px solid var(--text-muted);
+    appearance: none;
+    outline: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .task-checkbox:checked {
+    background: var(--accent-green);
+    border-color: var(--accent-green);
+  }
+
+  .task-checkbox:checked::after {
+    content: "✓";
+    color: #000;
+    font-size: 0.8rem;
+    font-weight: 900;
+  }
+
+  .task-text {
+    font-size: 0.95rem;
+    line-height: 1.4;
+    transition: all 0.2s ease;
+  }
+
+  .task-item.completed .task-text {
+    color: var(--text-muted);
+    text-decoration: line-through;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="panel">
+  <h2>SDD Artifacts Overview</h2>
+  <div class="sdd-status-bar">
+    <div class="sdd-status-card">
+      <span>Proposal</span>
+      {% if sdd_status.has_sdd and "proposal.md" in sdd_status.found_artifacts %}
+        <span class="badge badge-success">Found</span>
+      {% else %}
+        <span class="badge badge-error">Missing</span>
+      {% endif %}
+    </div>
+    <div class="sdd-status-card">
+      <span>Spec</span>
+      {% if sdd_status.has_sdd and "spec.md" in sdd_status.found_artifacts %}
+        <span class="badge badge-success">Found</span>
+      {% else %}
+        <span class="badge badge-error">Missing</span>
+      {% endif %}
+    </div>
+    <div class="sdd-status-card">
+      <span>Design</span>
+      {% if sdd_status.has_sdd and "design.md" in sdd_status.found_artifacts %}
+        <span class="badge badge-success">Found</span>
+      {% else %}
+        <span class="badge badge-error">Missing</span>
+      {% endif %}
+    </div>
+    <div class="sdd-status-card">
+      <span>Tasks List</span>
+      {% if sdd_status.has_sdd and "tasks.md" in sdd_status.found_artifacts %}
+        <span class="badge badge-success">Found</span>
+      {% else %}
+        <span class="badge badge-error">Missing</span>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="panel tabs-container">
+  <div class="tabs-header">
+    <button class="tab-btn active" id="tab-btn-proposal" onclick="switchTab('proposal')">Proposal</button>
+    <button class="tab-btn" id="tab-btn-spec" onclick="switchTab('spec')">Spec</button>
+    <button class="tab-btn" id="tab-btn-design" onclick="switchTab('design')">Design</button>
+    <button class="tab-btn" id="tab-btn-tasks" onclick="switchTab('tasks')">Tasks Checklist</button>
+  </div>
+
+  <!-- Proposal Tab -->
+  <div id="tab-content-proposal" class="tab-content active artifact-viewer">
+    {% if proposal_content %}
+      <pre><code>{{ proposal_content }}</code></pre>
+    {% else %}
+      <div class="empty-artifact">
+        <h4>proposal.md is missing</h4>
+        <p>No proposal artifact detected in the project SDD folder.</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Spec Tab -->
+  <div id="tab-content-spec" class="tab-content artifact-viewer">
+    {% if spec_content %}
+      <pre><code>{{ spec_content }}</code></pre>
+    {% else %}
+      <div class="empty-artifact">
+        <h4>spec.md is missing</h4>
+        <p>No specification artifact detected in the project SDD folder.</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Design Tab -->
+  <div id="tab-content-design" class="tab-content artifact-viewer">
+    {% if design_content %}
+      <pre><code>{{ design_content }}</code></pre>
+    {% else %}
+      <div class="empty-artifact">
+        <h4>design.md is missing</h4>
+        <p>No design artifact detected in the project SDD folder.</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Tasks Tab -->
+  <div id="tab-content-tasks" class="tab-content artifact-viewer">
+    {% if tasks_list %}
+      <div class="checklist-summary">
+        <span>Completion Progress</span>
+        <div class="progress-container">
+          <div class="progress-bar" id="tasks-progress-bar"></div>
+        </div>
+        <span id="tasks-progress-text">0 / 0 Completed</span>
+      </div>
+      
+      <div class="task-list">
+        {% for task in tasks_list %}
+          <div class="task-item{% if task.done %} completed{% endif %}" id="task-item-{{ loop.index }}">
+            <div class="task-checkbox-wrapper">
+              <input type="checkbox" 
+                     class="task-checkbox" 
+                     id="task-check-{{ loop.index }}" 
+                     {% if task.done %}checked{% endif %}
+                     onchange="toggleTask({{ loop.index }})">
+            </div>
+            <div class="task-text">{{ task.title }}</div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-artifact">
+        <h4>tasks.md is missing or empty</h4>
+        <p>No task list detected, or no checklist tasks could be parsed from tasks.md.</p>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<p><a href="/project/{{ key }}" id="back-to-project-detail">Back to project detail</a> | <a href="/" id="back-to-project-list">Back to project list</a></p>
+
+<script>
+  function switchTab(tabId) {
+    // Update active tab button
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.classList.remove('active');
+    });
+    document.getElementById('tab-btn-' + tabId).classList.add('active');
+
+    // Update active tab content
+    document.querySelectorAll('.tab-content').forEach(content => {
+      content.classList.remove('active');
+    });
+    document.getElementById('tab-content-' + tabId).classList.add('active');
+  }
+
+  function updateProgress() {
+    const checkboxes = document.querySelectorAll('.task-checkbox');
+    if (checkboxes.length === 0) return;
+    
+    let checkedCount = 0;
+    checkboxes.forEach(chk => {
+      if (chk.checked) checkedCount++;
+    });
+    
+    const percentage = Math.round((checkedCount / checkboxes.length) * 100);
+    const progressBar = document.getElementById('tasks-progress-bar');
+    if (progressBar) {
+      progressBar.style.width = percentage + '%';
+    }
+    
+    const progressText = document.getElementById('tasks-progress-text');
+    if (progressText) {
+      progressText.textContent = `${checkedCount} / ${checkboxes.length} Completed (${percentage}%)`;
+    }
+  }
+
+  function toggleTask(index) {
+    const checkbox = document.getElementById('task-check-' + index);
+    const item = document.getElementById('task-item-' + index);
+    if (checkbox && item) {
+      if (checkbox.checked) {
+        item.classList.add('completed');
+      } else {
+        item.classList.remove('completed');
+      }
+    }
+    updateProgress();
+  }
+
+  // Initialize progress bar on load
+  document.addEventListener('DOMContentLoaded', () => {
+    updateProgress();
+  });
+</script>
+{% endblock %}

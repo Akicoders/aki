@@ -85,6 +85,10 @@ class KanbanColumn(Widget):
     KanbanCard.-highlighted {
         border: solid yellow;
     }
+    .kanban-empty {
+        padding: 1 2;
+        color: $text-muted;
+    }
     """
 
     def __init__(self, status: str, title: str) -> None:
@@ -96,6 +100,12 @@ class KanbanColumn(Widget):
         count = sum(1 for t in _tasks if t.status == self._status)
         yield Static(f"{self._title} ({count})", classes="col-header")
         with ScrollableContainer():
+            if not _tasks:
+                yield Static(
+                    "[dim]No tasks yet.\nRun SDD (tasks.md) or add a card below.[/dim]",
+                    classes="kanban-empty",
+                    markup=True,
+                )
             yield ListView(
                 *[KanbanCard(t) for t in _tasks if t.status == self._status],
                 id=f"col-{self._status}",

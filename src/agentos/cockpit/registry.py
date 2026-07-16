@@ -81,3 +81,17 @@ def touch_last_audit(root_path: Path, database: Optional[Database] = None) -> Op
         model.last_audit_at = datetime.utcnow()
         session.flush()
         return ProjectRefRecord.from_model(model)
+
+
+def delete_project(root_path: Path | str, database: Optional[Database] = None) -> bool:
+    """Delete a ProjectRef from the DB registry by root path. Returns True if deleted, False if not found."""
+    db = database or get_database()
+    canonical = _canonical_root(Path(root_path))
+    with db.session() as session:
+        model = session.get(ProjectRefModel, canonical)
+        if model is None:
+            return False
+        session.delete(model)
+        session.flush()
+        return True
+

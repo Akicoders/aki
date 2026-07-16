@@ -1,26 +1,109 @@
 {% extends "base.html" %}
 
 {% block title %}Aki Cockpit - Projects{% endblock %}
-{% block header %}Registered Projects{% endblock %}
+{% block header %}Projects Workspace{% endblock %}
 
 {% block content %}
-{% if projects %}
-<table>
-  <thead>
-    <tr><th>Key</th><th>Source</th><th>Root Path</th><th>Last Opened</th></tr>
-  </thead>
-  <tbody>
-    {% for project in projects %}
-    <tr>
-      <td><a href="/project/{{ project.key }}">{{ project.key }}</a></td>
-      <td>{{ project.source }}</td>
-      <td>{{ project.root_path }}</td>
-      <td>{{ project.last_opened_at or "unknown" }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+<!-- Hero stats banner -->
+<div class="stats-grid" id="stats-banner">
+  <div class="stat-card" id="stat-total-projects">
+    <span class="stat-val" id="val-total-projects">{{ metrics.total_projects }}</span>
+    <span class="stat-lbl">Total Projects</span>
+  </div>
+  <div class="stat-card" id="stat-healthy-projects">
+    <span class="stat-val" style="color: var(--accent-green);" id="val-healthy-projects">{{ metrics.healthy_projects }}</span>
+    <span class="stat-lbl">Healthy Projects</span>
+  </div>
+  <div class="stat-card" id="stat-sdd-completeness">
+    <span class="stat-val" style="color: #ff7b72;" id="val-sdd-completeness">{{ metrics.avg_sdd_completeness }}%</span>
+    <span class="stat-lbl">Avg SDD Completeness</span>
+  </div>
+  <div class="stat-card" id="stat-clean-git">
+    <span class="stat-val" style="color: var(--accent-green);" id="val-clean-git">{{ metrics.clean_git }}</span>
+    <span class="stat-lbl">Clean Git Repo</span>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="filter-container" id="filter-bar">
+  <span style="font-weight: 500;">Filter Projects</span>
+  <label class="toggle-switch" id="lbl-toggle-temp">
+    <input type="checkbox" id="toggle-temp" {% if show_temp %}checked{% endif %}>
+    <span class="toggle-slider"></span>
+    <span>Show Temporary Test Projects</span>
+  </label>
+</div>
+
+<!-- Grid layout -->
+{% if project_data %}
+<div class="project-grid" id="projects-grid">
+  {% for project in project_data %}
+  <div class="project-card" id="project-card-{{ project.record.key }}">
+    <div>
+      <div class="project-card-header">
+        <h3 class="project-card-title">
+          <a href="/project/{{ project.record.key }}" id="project-link-{{ project.record.key }}">
+            {{ project.record.key }}
+          </a>
+        </h3>
+        <!-- Source badge -->
+        <span class="badge badge-info" id="badge-source-{{ project.record.key }}">{{ project.record.source }}</span>
+      </div>
+      <div class="project-card-path" id="project-path-{{ project.record.key }}">{{ project.record.root_path }}</div>
+      
+      <div class="project-card-badges">
+        <!-- Git badge -->
+        {% if project.git_status == "clean" %}
+        <span class="badge badge-success" id="badge-git-{{ project.record.key }}">Git: clean</span>
+        {% elif project.git_status == "dirty" %}
+        <span class="badge badge-warning" id="badge-git-{{ project.record.key }}">Git: dirty</span>
+        {% else %}
+        <span class="badge badge-error" id="badge-git-{{ project.record.key }}">Git: unknown</span>
+        {% endif %}
+
+        <!-- SDD badge -->
+        {% if "4/4" in project.sdd_completeness %}
+        <span class="badge badge-success" id="badge-sdd-{{ project.record.key }}">SDD: {{ project.sdd_completeness }}</span>
+        {% else %}
+        <span class="badge badge-warning" id="badge-sdd-{{ project.record.key }}">SDD: {{ project.sdd_completeness }}</span>
+        {% endif %}
+
+        <!-- Test health badge -->
+        {% if project.test_health == "healthy" %}
+        <span class="badge badge-success" id="badge-test-{{ project.record.key }}">Tests: healthy</span>
+        {% elif project.test_health == "failing" %}
+        <span class="badge badge-error" id="badge-test-{{ project.record.key }}">Tests: failing</span>
+        {% else %}
+        <span class="badge badge-warning" id="badge-test-{{ project.record.key }}">Tests: unknown</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="project-card-footer">
+      <span style="font-size: 0.8rem; color: var(--text-muted);" id="last-opened-{{ project.record.key }}">
+        Opened: {{ project.record.last_opened_at.strftime('%Y-%m-%d %H:%M') if project.record.last_opened_at else 'never' }}
+      </span>
+      <!-- Trash/Delete button -->
+      <a href="/project/delete?root_path={{ project.record.root_path | urlencode }}" 
+         class="btn-delete" 
+         id="delete-btn-{{ project.record.key }}" 
+         title="Delete from registry"
+         onclick="return confirm('Are you sure you want to remove this project from the registry?');">
+        ✕
+      </a>
+    </div>
+  </div>
+  {% endfor %}
+</div>
 {% else %}
-<p>No projects are registered yet.</p>
+<p id="empty-state" style="text-align: center; color: var(--text-muted); margin-top: 3rem;">
+  No projects are registered yet.
+</p>
 {% endif %}
+
+<script id="list-scripts">
+  document.getElementById('toggle-temp').addEventListener('change', function(e) {
+    window.location.href = '/?show_temp=' + e.target.checked;
+  });
+</script>
 {% endblock %}

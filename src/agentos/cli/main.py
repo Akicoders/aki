@@ -1356,7 +1356,7 @@ def agents():
 
     for profile in profiles:
         tools = "deny-all" if profile.tools.deny_all else ", ".join(profile.tools.allowed)
-        delegation = "metadata only" if profile.delegation.enabled else "off"
+        delegation = "on" if profile.delegation.enabled else "off"
         table.add_row(
             profile.id,
             profile.name,

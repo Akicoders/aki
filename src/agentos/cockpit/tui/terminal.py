@@ -42,44 +42,59 @@ class TerminalTab(Widget):
         layout: vertical;
         height: 1fr;
         width: 1fr;
+        background: $surface;
     }
     #term-header {
-        height: 2;
-        background: #111111;
-        border-bottom: solid $accent;
-        padding: 0 2;
+        height: 3;
+        background: $panel;
+        border-bottom: heavy $accent;
+        padding: 1 2;
         color: $text-muted;
+    }
+    #term-log-wrap {
+        height: 1fr;
+        border: round $accent-darken-2;
+        border-title-color: $accent;
+        border-title-style: bold;
+        margin: 0 1;
+        background: $surface;
     }
     #term-log {
         height: 1fr;
-        background: #0d0d0d;
-        color: #e0e0e0;
-        overflow-y: auto;
+        background: $surface;
+        color: $text;
+        padding: 0 1;
+        scrollbar-color: $accent-darken-1;
+        scrollbar-background: $panel;
     }
     #term-input-row {
         height: 3;
-        background: #111111;
-        border-top: solid $accent-darken-2;
+        background: $panel;
+        border: round $accent;
         layout: horizontal;
+        margin: 0 1 1 1;
         padding: 0 1;
     }
     #term-prompt {
         width: 3;
         margin: 1 1 0 0;
-        color: cyan;
+        color: $success;
         text-style: bold;
     }
     #term-input {
         width: 1fr;
-        background: #111111;
-        color: #e0e0e0;
+        background: $panel;
+        color: $text;
         border: none;
+    }
+    #term-input:focus {
+        background: $panel-lighten-1;
     }
     #term-hint {
         height: 1;
-        background: #0a0a0a;
+        background: $panel-darken-1;
         padding: 0 2;
-        color: #555555;
+        color: $text-muted;
     }
     """
 
@@ -91,25 +106,29 @@ class TerminalTab(Widget):
 
     def compose(self) -> ComposeResult:
         yield Static(
-            f"[dim]🖥️  [cyan]{self._cwd}[/cyan][/dim]",
+            f"[bold]🖥️  Aki Terminal[/bold]  [dim]—[/dim]  [cyan]{self._cwd}[/cyan]",
             id="term-header",
             markup=True,
         )
-        yield RichLog(id="term-log", highlight=False, markup=False, auto_scroll=True)
+        with Vertical(id="term-log-wrap"):
+            yield RichLog(id="term-log", highlight=False, markup=True, auto_scroll=True, wrap=True)
         with Horizontal(id="term-input-row"):
             yield Static("❯", id="term-prompt")
-            yield Input(placeholder="", id="term-input")
+            yield Input(placeholder="type a command…", id="term-input")
         yield Static(
-            " ↑↓ history  |  clear  |  cd <dir>  |  interactive apps (nano/vim/htop…) open in your real terminal and return here when done",
+            " [b]↑↓[/b] history  |  [b]ctrl+l[/b] clear  |  [b]cd <dir>[/b]  |  interactive apps (nano/vim/htop…) open in your real terminal and return here when done",
             id="term-hint",
+            markup=True,
         )
 
     def on_mount(self) -> None:
+        log_wrap = self.query_one("#term-log-wrap")
+        log_wrap.border_title = "session"
         log = self.query_one("#term-log", RichLog)
-        log.write(f"Aki Terminal  —  {self._cwd}")
-        log.write(f"uname: {os.uname().sysname} {os.uname().machine}")
-        log.write("─" * 80)
-        log.write("Tip: interactive apps (nano, vim, htop, ssh…) suspend the TUI and open in your real terminal.")
+        log.write(f"[bold cyan]Aki Terminal[/bold cyan]  [dim]—[/dim]  {self._cwd}")
+        log.write(f"[dim]uname: {os.uname().sysname} {os.uname().machine}[/dim]")
+        log.write("[dim]" + "─" * 78 + "[/dim]")
+        log.write("[dim]Tip: interactive apps (nano, vim, htop, ssh…) suspend the TUI and open in your real terminal.[/dim]")
         log.write("")
         self.query_one("#term-input", Input).focus()
 
@@ -142,7 +161,7 @@ class TerminalTab(Widget):
             return
 
         log = self.query_one("#term-log", RichLog)
-        log.write(f"❯ {cmd}")
+        log.write(f"[bold green]❯[/bold green] [bold]{_escape(cmd)}[/bold]")
 
         if _is_interactive(cmd):
             # Run in a real PTY via App.suspend()
@@ -178,9 +197,9 @@ class TerminalTab(Widget):
     async def _run_interactive(self, cmd: str) -> None:
         """Suspend Textual, run the command in the real terminal, resume."""
         log = self.query_one("#term-log", RichLog)
-        log.write(f"  [suspending cockpit → running in your terminal]")
+        log.write("  [yellow italic]⏻ suspending cockpit → running in your terminal[/yellow italic]")
 
-        async with self.app.suspend():
+        with self.app.suspend():
             subprocess.run(
                 cmd,
                 shell=True,
@@ -188,7 +207,7 @@ class TerminalTab(Widget):
                 env={**os.environ},
             )
 
-        log.write(f"  [cockpit resumed]")
+        log.write("  [green italic]✓ cockpit resumed[/green italic]")
         log.write("")
 
     # ── Inline: captured subprocess output ────────────────────────────────────
@@ -207,16 +226,20 @@ class TerminalTab(Widget):
                 env={**os.environ, "TERM": "xterm-256color", "FORCE_COLOR": "0"},
             )
             for line in proc.stdout:  # type: ignore[union-attr]
-                self.app.call_from_thread(log.write, line.rstrip())
+                self.app.call_from_thread(log.write, _escape(line.rstrip()))
             proc.wait()
-            if proc.returncode != 0:
+            if proc.returncode == 0:
                 self.app.call_from_thread(
-                    log.write, f"[exit {proc.returncode}]"
+                    log.write, f"[dim green][exit {proc.returncode}][/dim green]"
+                )
+            else:
+                self.app.call_from_thread(
+                    log.write, f"[bold red][exit {proc.returncode}][/bold red]"
                 )
         except subprocess.TimeoutExpired:
-            self.app.call_from_thread(log.write, "[timeout]")
+            self.app.call_from_thread(log.write, "[bold red][timeout][/bold red]")
         except Exception as e:
-            self.app.call_from_thread(log.write, f"[error: {e}]")
+            self.app.call_from_thread(log.write, f"[bold red][error: {_escape(str(e))}][/bold red]")
         self.app.call_from_thread(log.write, "")
 
     # ── cd built-in ───────────────────────────────────────────────────────────
@@ -230,10 +253,15 @@ class TerminalTab(Widget):
             if new_cwd.is_dir():
                 self._cwd = new_cwd
                 self.query_one("#term-header", Static).update(
-                    f"[dim]🖥️  [cyan]{self._cwd}[/cyan][/dim]"
+                    f"[bold]🖥️  Aki Terminal[/bold]  [dim]—[/dim]  [cyan]{self._cwd}[/cyan]"
                 )
             else:
-                log.write(f"cd: {target}: No such directory")
+                log.write(f"[bold red]cd: {_escape(target)}: No such directory[/bold red]")
         except Exception as e:
-            log.write(f"cd: {e}")
+            log.write(f"[bold red]cd: {_escape(str(e))}[/bold red]")
         log.write("")
+
+
+def _escape(text: str) -> str:
+    """Escape Rich markup control characters so raw command output can't inject styling."""
+    return text.replace("[", r"\[")

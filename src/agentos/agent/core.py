@@ -260,6 +260,11 @@ class AgentOS:
         self.agent_registry = agent_registry or AgentRegistry.from_config(
             get_config().agent_profiles
         )
+        # Runtime-selectable Qwen model override (set from Cockpit's model
+        # selector). None means "use config/profile defaults". Takes
+        # priority over a resolved profile's own `model` field, since it
+        # represents an explicit, more recent user choice.
+        self.active_model: Optional[str] = None
         self._init_skills()
 
     def _init_skills(self) -> None:
@@ -525,7 +530,7 @@ class AgentOS:
             if profile and profile.temperature is not None
             else self.config.temperature
         )
-        if depth == 0:
+        if depth == 0 and (profile is None or profile.delegation.enabled):
             tools = [*tools, self._build_delegate_tool_schema()]
         total_tool_calls = 0
         last_tools_used: list[str] = []
@@ -545,7 +550,11 @@ class AgentOS:
                 temperature=temperature,
                 status_callback=status_callback,
                 token_callback=token_callback,
-                **({"model": profile.model} if profile and profile.model else {}),
+                **(
+                    {"model": self.active_model}
+                    if self.active_model
+                    else ({"model": profile.model} if profile and profile.model else {})
+                ),
             )
 
             # Add assistant message to history
@@ -572,7 +581,7 @@ class AgentOS:
 
                 if depth == 0 and fn_name == "delegate":
                     delegate_msg = await self._run_delegation(
-                        fn_args, project, session_id, tool_call_id, status_callback
+                        fn_args, project, session_id, tool_call_id, status_callback, profile
                     )
                     messages.append(delegate_msg)
                     continue
@@ -662,6 +671,7 @@ class AgentOS:
         session_id: str,
         tool_call_id: str,
         status_callback: Optional[StatusCallback],
+        caller_profile: Optional[AgentProfile] = None,
     ) -> dict[str, Any]:
         """Resolve, run, and adapt a single worker delegation call.
 
@@ -670,7 +680,24 @@ class AgentOS:
         message rather than propagating `ProfileNotFoundError` -- the
         supervisor stays in control of recovery (see Resolved Open Decisions,
         openspec/changes/multi-agent-orchestration/tasks.md).
+
+        `caller_profile` is a defensive guard: the `delegate` tool schema is
+        only exposed to the model when `caller_profile.delegation.enabled` is
+        not False (see `_reasoning_loop`), but a stale tool-call replayed from
+        conversation history or a mid-conversation profile switch could still
+        reach this method. Refuse execution rather than trusting the schema
+        gate alone.
         """
+        if caller_profile is not None and not caller_profile.delegation.enabled:
+            return {
+                "role": "tool",
+                "tool_call_id": tool_call_id,
+                "content": (
+                    f"delegate error: delegation is disabled for profile "
+                    f"'{caller_profile.id}'"
+                ),
+            }
+
         profile_id = fn_args.get("profile_id")
         try:
             worker_profile = self.agent_registry.resolve(profile_id)
