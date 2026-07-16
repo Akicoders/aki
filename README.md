@@ -48,6 +48,21 @@ This repository is intentionally positioned as an **open-source hackathon produc
 - [`uv`](https://docs.astral.sh/uv/)
 - Optional: `QWEN_API_KEY` or `DASHSCOPE_API_KEY` for Qwen-powered extraction/explanations
 
+### Fastest path: one command
+
+After cloning and syncing deps (step 1 below), run:
+
+```bash
+uv run aki setup
+```
+
+This chains config bootstrap (`config init`) and a health check (`doctor`) into
+one idempotent step, then prints next-step hints (`aki mcp-setup <host>`,
+`aki chat`, `aki cockpit`). It's safe to re-run at any time.
+
+If you want manual control, already have a partial setup, or want to pass
+explicit flags (e.g. `--qwen-api-key`), follow the numbered steps below instead.
+
 ### 1) Install and sync
 
 ```bash

@@ -517,9 +517,11 @@ def _find_project_env_path() -> Optional[Path]:
     return None
 
 
-@app.command()
-def doctor():
-    """Check Aki installation health (global-only; independent of CWD)."""
+def _do_doctor() -> list[tuple[str, bool, str]]:
+    """Run all health checks, print the report, and return the raw checks.
+
+    Shared by `aki doctor` and `aki setup` so both present identical output.
+    """
     checks: list[tuple[str, bool, str]] = []
 
     py_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
@@ -588,17 +590,28 @@ def doctor():
     if project_config_path is not None:
         console.print(f"[dim]Project-local config detected: {project_config_path}[/dim]")
 
+    return checks
 
-@config_app.command("init")
-def config_init(
-    qwen_api_key: Optional[str] = typer.Option(None, "--qwen-api-key", help="Qwen Cloud API key"),
-    dashscope_api_key: Optional[str] = typer.Option(None, "--dashscope-api-key", help="DashScope API key"),
-    model: Optional[str] = typer.Option(None, "--model", help="Default Qwen model"),
-    embedding_model: Optional[str] = typer.Option(None, "--embedding-model", help="Default embedding model"),
-    base_url: Optional[str] = typer.Option(None, "--base-url", help="Qwen-compatible API base URL"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would happen without writing files"),
-):
-    """Bootstrap the global Aki config home at ~/.aki/ (.env + config.yaml)."""
+
+@app.command()
+def doctor():
+    """Check Aki installation health (global-only; independent of CWD)."""
+    _do_doctor()
+
+
+def _do_config_init(
+    qwen_api_key: Optional[str] = None,
+    dashscope_api_key: Optional[str] = None,
+    model: Optional[str] = None,
+    embedding_model: Optional[str] = None,
+    base_url: Optional[str] = None,
+    dry_run: bool = False,
+) -> None:
+    """Bootstrap the global Aki config home at ~/.aki/ (.env + config.yaml).
+
+    Shared by `aki config init` and `aki setup`. Raises `typer.Exit(1)` when
+    no API key was provided and stdin is not interactive.
+    """
     home = _global_home()
 
     if qwen_api_key is None and dashscope_api_key is None:
@@ -662,6 +675,88 @@ def config_init(
         console.print(f"[green]✓[/green] Wrote {yaml_path}")
 
     console.print(f"[green]✓[/green] Global config initialized at {home}")
+
+
+@config_app.command("init")
+def config_init(
+    qwen_api_key: Optional[str] = typer.Option(None, "--qwen-api-key", help="Qwen Cloud API key"),
+    dashscope_api_key: Optional[str] = typer.Option(None, "--dashscope-api-key", help="DashScope API key"),
+    model: Optional[str] = typer.Option(None, "--model", help="Default Qwen model"),
+    embedding_model: Optional[str] = typer.Option(None, "--embedding-model", help="Default embedding model"),
+    base_url: Optional[str] = typer.Option(None, "--base-url", help="Qwen-compatible API base URL"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would happen without writing files"),
+):
+    """Bootstrap the global Aki config home at ~/.aki/ (.env + config.yaml)."""
+    _do_config_init(
+        qwen_api_key=qwen_api_key,
+        dashscope_api_key=dashscope_api_key,
+        model=model,
+        embedding_model=embedding_model,
+        base_url=base_url,
+        dry_run=dry_run,
+    )
+
+
+_ESSENTIAL_DOCTOR_CHECKS = {"Python >= 3.11", "uv installed", "Import agentos"}
+
+
+@app.command("setup")
+def setup():
+    """One command to go from a fresh clone to a working Aki install.
+
+    Chains `config init` (writes ~/.aki/.env + config.yaml, idempotent with
+    backups) and `doctor` (verifies the result). Safe to re-run.
+    """
+    console.print(
+        Panel.fit(
+            "[bold cyan]Aki Setup[/bold cyan]\n"
+            "Bootstrapping your global config and verifying the install.",
+            border_style="cyan",
+        )
+    )
+
+    key, _ = _resolve_global_api_key()
+    if key:
+        console.print("[green]✓[/green] Qwen API key already configured — skipping `config init` prompt.")
+    else:
+        console.print("[cyan]No Qwen API key found — running `config init`...[/cyan]")
+        try:
+            _do_config_init()
+        except typer.Exit as exc:
+            if exc.exit_code != 0:
+                console.print(
+                    "[yellow]⚠[/yellow] Skipped Qwen API key setup (no interactive terminal and no key "
+                    "provided).\n[dim]Core memory/agent tools still work without it. Run "
+                    "`aki config init --qwen-api-key <key>` later to enable Qwen features.[/dim]"
+                )
+
+    console.print("\n[bold]Verifying installation...[/bold]")
+    checks = _do_doctor()
+
+    key, key_detail = _resolve_global_api_key()
+    qwen_configured = bool(key)
+    essential_ok = all(ok for name, ok, _ in checks if name in _ESSENTIAL_DOCTOR_CHECKS)
+
+    console.print("\n[bold]Setup summary[/bold]")
+    console.print(f"  Global config home: [cyan]{_global_home()}[/cyan]")
+    if qwen_configured:
+        console.print("  Qwen configured: [green]yes[/green]")
+    else:
+        console.print(f"  Qwen configured: [yellow]no[/yellow] ({key_detail})")
+    console.print(
+        f"  Install healthy: {'[green]yes[/green]' if essential_ok else '[red]no — see checks above[/red]'}"
+    )
+
+    console.print(
+        "\n[bold]Next steps[/bold]\n"
+        "  • Register Aki with your coding host's MCP config: "
+        "[cyan]aki mcp-setup <claude-code|opencode>[/cyan]\n"
+        "  • Start chatting: [cyan]aki chat[/cyan]\n"
+        "  • Open the cockpit: [cyan]aki cockpit[/cyan]"
+    )
+
+    if not essential_ok:
+        raise typer.Exit(1)
 
 
 @app.command()
