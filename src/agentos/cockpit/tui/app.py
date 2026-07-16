@@ -178,6 +178,20 @@ class AkiCockpitApp(App):
             except Exception as e:
                 self.notify(f"Could not open file: {e}", severity="error")
 
+    def open_file_in_editor(self, path: Path) -> None:
+        """Open a file in the main Explorer editor and switch tab."""
+        try:
+            content = path.read_text(encoding="utf-8")
+            tc = self.query_one("#main-tabs", TabbedContent)
+            tc.active = "tab-explorer"
+            editor = self.query_one("#editor-view TextArea", TextArea)
+            editor.text = content
+            self.current_file = path
+            editor.focus()
+            self.notify(f"Opened {path.name} in Editor")
+        except Exception as e:
+            self.notify(f"Could not open file: {e}", severity="error")
+
     def action_save(self) -> None:
         if self.current_file:
             try:

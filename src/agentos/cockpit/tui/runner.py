@@ -109,6 +109,7 @@ class RunnerTab(Widget):
         with Vertical(id="runner-right"):
             with Horizontal(id="runner-toolbar"):
                 yield Static("Select a [bold].py[/bold] or [bold].md[/bold] file from the tree →", id="file-label", markup=True)
+                yield Button("✏️ Edit", id="edit-run-btn", variant="primary", disabled=True)
                 yield Button("▶ Run", id="run-btn", variant="success", disabled=True)
             yield TextArea(
                 "",
@@ -172,6 +173,7 @@ class RunnerTab(Widget):
             label.update(f"[bold]{path.name}[/bold]  [dim]{lang}[/dim]")
             self.query_one("#run-btn", Button).disabled = True
 
+        self.query_one("#edit-run-btn", Button).disabled = False
         self.app.notify(f"Opened {path.name}  [{lang}]")
 
     def on_text_area_changed(self, event: TextArea.Changed) -> None:
@@ -179,6 +181,11 @@ class RunnerTab(Widget):
             self.query_one("#md-preview", Markdown).update(
                 self.query_one("#editor-pane", TextArea).text
             )
+
+    @on(Button.Pressed, "#edit-run-btn")
+    def _on_edit_run_btn(self) -> None:
+        if self._current_file and self._current_file.exists():
+            self.app.open_file_in_editor(self._current_file)  # type: ignore[attr-defined]
 
     @on(Button.Pressed, "#run-btn")
     def _on_run_btn(self) -> None:

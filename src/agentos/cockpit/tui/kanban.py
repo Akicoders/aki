@@ -8,14 +8,15 @@ from textual.widget import Widget
 from textual.widgets import Button, Input, Label, ListItem, ListView, Static
 
 from agentos.cockpit.tui.task_model import (
-    DEFAULT_TASKS,
     PRIORITY_COLOR,
     PRIORITY_ICON,
     Task,
     stats,
+    load_tasks,
+    save_tasks,
 )
 
-_tasks: list[Task] = list(DEFAULT_TASKS)
+_tasks: list[Task] = load_tasks()
 
 COLUMNS: list[tuple[str, str]] = [
     ("todo",        "📥 Todo"),
@@ -215,6 +216,7 @@ class KanbanTab(Widget):
         self.app.notify(f"Added: {title} [{cat}]")
 
     def _full_refresh(self) -> None:
+        save_tasks(_tasks)
         for col in self.query(KanbanColumn):
             col.refresh_column()
         done, total = stats(_tasks)
