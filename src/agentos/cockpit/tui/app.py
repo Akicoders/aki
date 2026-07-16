@@ -5,9 +5,9 @@ from textual.widgets import Footer, Header, TextArea, TabbedContent, TabPane
 from agentos.cockpit.tui.components import FilteredDirectoryTree
 from agentos.cli.cockpit import ProjectRef
 
-# Import our new tabs
 from agentos.cockpit.tui.chat import ChatTab
-from agentos.cockpit.tui.tasks import TaskBoardTab
+from agentos.cockpit.tui.kanban import KanbanTab
+from agentos.cockpit.tui.runner import RunnerTab
 from agentos.cockpit.tui.sdd import SDDHubTab
 
 class AkiCockpitApp(App):
@@ -16,34 +16,11 @@ class AkiCockpitApp(App):
     CSS = """
     #tree-view {
         width: 30%;
-        dock: left;
         border-right: solid cyan;
     }
     #editor-view {
         width: 70%;
         height: 100%;
-    }
-    #sdd-tree {
-        width: 30%;
-        dock: left;
-        border-right: solid magenta;
-    }
-    #sdd-viewer {
-        width: 70%;
-        height: 100%;
-        padding: 1 2;
-    }
-    #chat-log {
-        height: 1fr;
-        border: solid cyan;
-        margin-bottom: 1;
-    }
-    #chat-input {
-        dock: bottom;
-    }
-    #task-list {
-        height: 100%;
-        border: solid green;
     }
     """
 
@@ -70,10 +47,13 @@ class AkiCockpitApp(App):
             
             with TabPane("Chat", id="tab-chat"):
                 yield ChatTab()
-                
-            with TabPane("Tasks", id="tab-tasks"):
-                yield TaskBoardTab()
-                
+
+            with TabPane("Kanban", id="tab-kanban"):
+                yield KanbanTab()
+
+            with TabPane("Runner", id="tab-runner"):
+                yield RunnerTab()
+
             with TabPane("SDD Hub", id="tab-sdd"):
                 yield SDDHubTab(root_path=self.project.root_path)
                 

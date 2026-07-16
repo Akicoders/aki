@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 Priority = Literal["high", "medium", "low"]
+Status   = Literal["todo", "in_progress", "done"]
 
 PRIORITY_ICON: dict[Priority, str] = {
     "high":   "🔴",
@@ -23,19 +24,36 @@ class Task:
     category: str
     priority: Priority = "medium"
     done: bool = False
+    status: Status = "todo"
+
+    def advance(self) -> None:
+        """Move to the next kanban column."""
+        order: list[Status] = ["todo", "in_progress", "done"]
+        idx = order.index(self.status)
+        if idx < len(order) - 1:
+            self.status = order[idx + 1]
+        self.done = self.status == "done"
+
+    def regress(self) -> None:
+        """Move to the previous kanban column."""
+        order: list[Status] = ["todo", "in_progress", "done"]
+        idx = order.index(self.status)
+        if idx > 0:
+            self.status = order[idx - 1]
+        self.done = self.status == "done"
 
 
 # ─── Default task list ────────────────────────────────────────────────────────
 DEFAULT_TASKS: list[Task] = [
-    Task("Setup Textual environment",       "Setup",   "high",   done=True),
-    Task("Create interactive tabs",          "Setup",   "high",   done=True),
-    Task("Fix startup performance",          "Setup",   "medium", done=True),
-    Task("Connect agent backend to Chat",    "Backend", "high",   done=False),
-    Task("Implement persistent task storage","Backend", "medium", done=False),
-    Task("Hook real agent responses",        "Backend", "high",   done=False),
-    Task("Add keybinding help overlay",      "UX",      "low",    done=False),
-    Task("Polish chat sidebar layout",       "UX",      "medium", done=False),
-    Task("Write README for the TUI",         "Docs",    "low",    done=False),
+    Task("Setup Textual environment",        "Setup",   "high",   done=True,  status="done"),
+    Task("Create interactive tabs",           "Setup",   "high",   done=True,  status="done"),
+    Task("Fix startup performance",           "Setup",   "medium", done=True,  status="done"),
+    Task("Connect agent backend to Chat",     "Backend", "high",   done=False, status="in_progress"),
+    Task("Implement persistent task storage", "Backend", "medium", done=False, status="todo"),
+    Task("Hook real agent responses",         "Backend", "high",   done=False, status="todo"),
+    Task("Add keybinding help overlay",       "UX",      "low",    done=False, status="todo"),
+    Task("Polish chat sidebar layout",        "UX",      "medium", done=False, status="in_progress"),
+    Task("Write README for the TUI",          "Docs",    "low",    done=False, status="todo"),
 ]
 
 
