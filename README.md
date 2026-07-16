@@ -71,13 +71,18 @@ cd aki
 uv sync --all-extras
 ```
 
-Or use the installer:
+Or use the installer, which also installs the `aki` uv tool and runs `aki
+setup` (config bootstrap + health check) automatically at the end — no
+follow-up command needed:
 
 ```bash
 sh install.sh
 ```
 
 ### 2) Verify the environment
+
+Only needed if you used the manual `uv sync --all-extras` path above;
+`sh install.sh` already runs this for you as its last step.
 
 ```bash
 uv run aki doctor

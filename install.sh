@@ -25,6 +25,44 @@ resolve_uv() {
   return 1
 }
 
+# Resolve the freshly-installed `aki` tool shim. `uv tool install` puts it on
+# $HOME/.local/bin by default, but that directory may not be on PATH yet in
+# the current shell (e.g. first-ever install, before a new shell is opened).
+# Falls back to invoking it through `uv tool run`, which finds the installed
+# tool without needing PATH to be updated.
+resolve_aki_cmd() {
+  uv_bin_local="$1"
+
+  if command -v aki >/dev/null 2>&1; then
+    printf '%s\n' "aki"
+    return 0
+  fi
+
+  if [ -x "$HOME/.local/bin/aki" ]; then
+    printf '%s\n' "$HOME/.local/bin/aki"
+    return 0
+  fi
+
+  printf '%s\n' "$uv_bin_local tool run aki"
+  return 0
+}
+
+# Run `aki setup` (config bootstrap + doctor, same essential-check split as
+# `_ESSENTIAL_DOCTOR_CHECKS` in src/agentos/cli/main.py) and fail the install
+# if it reports unhealthy. A missing Qwen API key is a warning inside `aki
+# setup` itself, not a hard failure, so this mirrors that behavior exactly
+# instead of reimplementing pass/fail criteria here.
+run_self_verify() {
+  verify_label="$1"
+  aki_cmd="$(resolve_aki_cmd "$uv_bin")"
+
+  info "Running aki setup to verify the $verify_label..."
+  # shellcheck disable=SC2086
+  if ! $aki_cmd setup; then
+    fail "aki setup reported the installation is unhealthy (see checks above). $verify_label did not complete cleanly."
+  fi
+}
+
 do_update() {
   script_dir="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
   cd "$script_dir"
@@ -50,8 +88,20 @@ do_update() {
   # Re-register the uv tool shim: editable installs pick up code changes
   # automatically, but re-running this is cheap and keeps the shim valid
   # if metadata (entry points, deps) changed.
+  #
+  # --force alone only replaces the entry point/shim; it does not force uv
+  # to re-resolve or refetch dependency versions, so a previously cached
+  # resolution can survive a "fresh" tool install. --reinstall implies
+  # --refresh and forces every package in the tool's environment to be
+  # re-resolved and reinstalled, which is what actually eliminates stale
+  # dependency risk (this is the root cause of the tree-sitter/textual
+  # error that only `aki update` used to fix). `uv tool uninstall` first is
+  # unnecessary on top of --reinstall: it would only remove the shim before
+  # recreating it, which --force already does.
   info "Re-installing aki as a uv tool..."
-  "$uv_bin" tool install --editable . --force || fail "uv tool install failed."
+  "$uv_bin" tool install --editable . --force --reinstall || fail "uv tool install failed."
+
+  run_self_verify "update"
 
   info "Aki updated successfully."
   exit 0
@@ -114,8 +164,11 @@ info "Using uv at $uv_bin"
 info "Running uv sync --all-extras..."
 "$uv_bin" sync --all-extras || fail "uv sync --all-extras failed."
 
+# See the comment in do_update() above the equivalent tool-install call:
+# --reinstall (on top of --force) is what actually guarantees a clean,
+# non-stale dependency resolution for the installed tool environment.
 info "Installing aki as a global uv tool..."
-"$uv_bin" tool install --editable . --force || fail "uv tool install failed."
+"$uv_bin" tool install --editable . --force --reinstall || fail "uv tool install failed."
 
 if [ -f ".env" ]; then
   info ".env already exists; leaving it unchanged."
@@ -123,6 +176,9 @@ else
   cp ".env.example" ".env"
   info "Created .env from .env.example."
 fi
+
+printf '\n'
+run_self_verify "install"
 
 printf '\nNext steps:\n'
 printf '1. aki --help\n'
