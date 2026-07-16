@@ -1,31 +1,35 @@
+"""SDD Hub tab — read-only architectural document viewer."""
 from pathlib import Path
+
 from textual.app import ComposeResult
 from textual.containers import Horizontal, ScrollableContainer
+from textual.widget import Widget
 from textual.widgets import Markdown
+
 from agentos.cockpit.tui.components import FilteredDirectoryTree
 
 
-class SDDHubTab(Horizontal):
-    """The SDD Hub tab — read-only architectural document viewer."""
+class SDDHubTab(Widget):
+    """SDD Hub — read-only architectural document viewer."""
 
     DEFAULT_CSS = """
     SDDHubTab {
-        height: 100%;
+        layout: horizontal;
+        height: 1fr;
+        width: 1fr;
     }
     #sdd-tree {
-        width: 30%;
-        dock: left;
-        border-right: solid magenta;
+        width: 30;
+        height: 1fr;
+        border-right: solid $accent-darken-1;
     }
     #sdd-scroll {
-        width: 70%;
-        height: 100%;
+        width: 1fr;
+        height: 1fr;
         overflow-y: auto;
         padding: 1 2;
     }
-    #sdd-viewer {
-        height: auto;
-    }
+    #sdd-viewer { height: auto; }
     """
 
     def __init__(self, root_path: Path, *args, **kwargs):
@@ -40,19 +44,17 @@ class SDDHubTab(Horizontal):
         yield FilteredDirectoryTree(sdd_path, id="sdd-tree")
         with ScrollableContainer(id="sdd-scroll"):
             yield Markdown(
-                "# SDD Hub\nSelect a markdown file from the tree to view its contents.",
+                "# SDD Hub\nSelect a **markdown** file from the tree to view its contents.",
                 id="sdd-viewer",
             )
 
     def on_directory_tree_file_selected(self, event: FilteredDirectoryTree.FileSelected) -> None:
-        """Load markdown files into the scrollable viewer."""
         path = Path(event.path)
         if path.suffix == ".md":
             try:
                 content = path.read_text(encoding="utf-8")
                 self.query_one(Markdown).update(content)
-                # Scroll to top after loading
                 self.query_one(ScrollableContainer).scroll_home(animate=False)
                 self.app.notify(f"Loaded {path.name}")
             except Exception as e:
-                self.app.notify(f"Could not open file: {e}", severity="error")
+                self.app.notify(f"Could not open: {e}", severity="error")

@@ -4,6 +4,7 @@ from __future__ import annotations
 from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, ScrollableContainer
+from textual.widget import Widget
 from textual.widgets import Button, Input, Label, ListItem, ListView, Static
 
 from agentos.cockpit.tui.task_model import (
@@ -28,7 +29,7 @@ def get_tasks() -> list[Task]:
 
 
 class KanbanCard(ListItem):
-    """A draggable-style task card inside a column."""
+    """A task card inside a kanban column."""
 
     def __init__(self, aki_task: Task) -> None:
         super().__init__()
@@ -38,8 +39,7 @@ class KanbanCard(ListItem):
         icon  = PRIORITY_ICON[self._aki_task.priority]
         color = PRIORITY_COLOR[self._aki_task.priority]
         yield Label(
-            f"{icon} [{color}]{self._aki_task.title}[/{color}]\n"
-            f"[dim]{self._aki_task.category}[/dim]",
+            f"{icon} [{color}]{self._aki_task.title}[/{color}]\n[dim]{self._aki_task.category}[/dim]",
             markup=True,
         )
 
@@ -47,44 +47,39 @@ class KanbanCard(ListItem):
         icon  = PRIORITY_ICON[self._aki_task.priority]
         color = PRIORITY_COLOR[self._aki_task.priority]
         self.query_one(Label).update(
-            f"{icon} [{color}]{self._aki_task.title}[/{color}]\n"
-            f"[dim]{self._aki_task.category}[/dim]",
+            f"{icon} [{color}]{self._aki_task.title}[/{color}]\n[dim]{self._aki_task.category}[/dim]"
         )
 
 
-class KanbanColumn(Vertical):
-    """A single kanban column with header and scrollable card list."""
+class KanbanColumn(Widget):
+    """A single kanban column."""
 
     DEFAULT_CSS = """
     KanbanColumn {
         width: 1fr;
-        height: 100%;
+        height: 1fr;
         border: solid $accent-darken-1;
         margin: 0 1;
-        padding: 0;
+        layout: vertical;
     }
-    .col-header {
+    KanbanColumn > .col-header {
         height: 3;
-        text-align: center;
+        width: 1fr;
+        content-align: center middle;
         text-style: bold;
-        background: $panel;
+        background: $panel-lighten-1;
+        color: $text;
         border-bottom: solid $accent;
-        padding: 1 1;
+        padding: 0 1;
     }
-    .col-scroll {
+    KanbanColumn > ScrollableContainer {
         height: 1fr;
         overflow-y: auto;
-    }
-    .col-list {
-        height: auto;
     }
     KanbanCard {
         margin: 0 0 1 0;
         padding: 1 1;
         border: solid $panel-lighten-1;
-    }
-    KanbanCard:hover {
-        border: solid $accent;
     }
     KanbanCard.-highlighted {
         border: solid yellow;
@@ -98,11 +93,10 @@ class KanbanColumn(Vertical):
 
     def compose(self) -> ComposeResult:
         count = sum(1 for t in _tasks if t.status == self._status)
-        yield Label(f"{self._title}  [dim]({count})[/dim]", classes="col-header", markup=True)
-        with ScrollableContainer(classes="col-scroll"):
+        yield Static(f"{self._title} ({count})", classes="col-header")
+        with ScrollableContainer():
             yield ListView(
                 *[KanbanCard(t) for t in _tasks if t.status == self._status],
-                classes="col-list",
                 id=f"col-{self._status}",
             )
 
@@ -114,23 +108,24 @@ class KanbanColumn(Vertical):
             if t.status == self._status:
                 lv.append(KanbanCard(t))
                 count += 1
-        self.query_one(Label).update(
-            f"{self._title}  [dim]({count})[/dim]"
-        )
+        self.query_one(".col-header").update(f"{self._title} ({count})")
 
 
-class KanbanTab(Vertical):
-    """Interactive Kanban board with three columns."""
+class KanbanTab(Widget):
+    """Interactive Kanban board."""
 
     DEFAULT_CSS = """
     KanbanTab {
-        padding: 0;
+        height: 1fr;
+        width: 1fr;
+        layout: vertical;
     }
-    #kanban-header {
+    #kanban-stats {
         height: 3;
         background: $panel;
         border-bottom: solid $accent;
         padding: 1 2;
+        color: $text;
     }
     #kanban-body {
         height: 1fr;
@@ -144,6 +139,7 @@ class KanbanTab(Vertical):
         padding: 0 1;
     }
     #kanban-add Input { width: 1fr; }
+    #cat-input { width: 18; margin-left: 1; }
     #kanban-add Button { width: 10; margin-left: 1; }
     #kanban-hint {
         height: 1;
@@ -155,31 +151,27 @@ class KanbanTab(Vertical):
 
     def compose(self) -> ComposeResult:
         done, total = stats(_tasks)
-        with Horizontal(id="kanban-header"):
-            yield Static(
-                f"[bold]🗂 Kanban Board[/bold]  "
-                f"[green]{done}[/green]/[white]{total}[/white] done",
-                markup=True,
-            )
-
+        yield Static(
+            f"[bold]🗂 Kanban[/bold]  [green]{done}[/green]/[white]{total}[/white] done",
+            id="kanban-stats",
+            markup=True,
+        )
         with Horizontal(id="kanban-body"):
             for status, title in COLUMNS:
                 yield KanbanColumn(status, title)
 
         with Horizontal(id="kanban-add"):
-            yield Input(placeholder="New card title…", id="kanban-input")
+            yield Input(placeholder="Card title…", id="kanban-input")
+            yield Input(placeholder="Category", id="cat-input")
             yield Button("+ Add", id="kanban-btn", variant="success")
 
         yield Static(
-            " [→] promote  [←] demote  [D] delete  [Tab] focus input",
+            " [→] promote  [←] demote  [D] delete",
             id="kanban-hint",
             markup=True,
         )
 
     def on_key(self, event) -> None:
-        key = event.key
-
-        # Find the currently focused ListView and its highlighted card
         focused = self.app.focused
         if not isinstance(focused, ListView):
             return
@@ -187,17 +179,15 @@ class KanbanTab(Vertical):
         if not isinstance(card, KanbanCard):
             return
 
-        if key == "right":
+        if event.key == "right":
             card._aki_task.advance()
             self._full_refresh()
             self.app.notify(f"→ {card._aki_task.status.replace('_', ' ').title()}")
-
-        elif key == "left":
+        elif event.key == "left":
             card._aki_task.regress()
             self._full_refresh()
             self.app.notify(f"← {card._aki_task.status.replace('_', ' ').title()}")
-
-        elif key.lower() == "d":
+        elif event.key.lower() == "d":
             _tasks.remove(card._aki_task)
             self._full_refresh()
             self.app.notify(f"Deleted: {card._aki_task.title}", severity="warning")
@@ -207,26 +197,27 @@ class KanbanTab(Vertical):
         self._add_card()
 
     @on(Input.Submitted, "#kanban-input")
+    @on(Input.Submitted, "#cat-input")
     def _on_input(self) -> None:
         self._add_card()
 
     def _add_card(self) -> None:
-        inp = self.query_one("#kanban-input", Input)
-        title = inp.value.strip()
+        title_inp = self.query_one("#kanban-input", Input)
+        cat_inp   = self.query_one("#cat-input", Input)
+        title = title_inp.value.strip()
         if not title:
             return
-        new_task = Task(title=title, category="General", priority="medium", status="todo")
-        _tasks.append(new_task)
-        inp.value = ""
+        cat = cat_inp.value.strip() or "General"
+        _tasks.append(Task(title=title, category=cat, priority="medium", status="todo"))
+        title_inp.value = ""
+        cat_inp.value   = ""
         self._full_refresh()
-        self.app.notify(f"Added: {title}")
+        self.app.notify(f"Added: {title} [{cat}]")
 
     def _full_refresh(self) -> None:
-        """Rebuild all three columns and update the header stats."""
         for col in self.query(KanbanColumn):
             col.refresh_column()
         done, total = stats(_tasks)
-        self.query_one("#kanban-header Static", Static).update(
-            f"[bold]🗂 Kanban Board[/bold]  "
-            f"[green]{done}[/green]/[white]{total}[/white] done",
+        self.query_one("#kanban-stats", Static).update(
+            f"[bold]🗂 Kanban[/bold]  [green]{done}[/green]/[white]{total}[/white] done"
         )

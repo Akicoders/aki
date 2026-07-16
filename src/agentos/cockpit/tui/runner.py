@@ -9,25 +9,30 @@ from pathlib import Path
 from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, ScrollableContainer
-from textual.widgets import Button, Label, Markdown, RichLog, Static, TextArea
+from textual.widget import Widget
+from textual.widgets import Button, Markdown, RichLog, Static, TextArea
 
 from agentos.cockpit.tui.components import FilteredDirectoryTree
 
 
-class RunnerTab(Horizontal):
-    """Select a .py or .md file — Python runs, Markdown renders."""
+class RunnerTab(Widget):
+    """Select a .py or .md file — Python runs, Markdown renders live."""
 
     DEFAULT_CSS = """
     RunnerTab {
-        height: 100%;
+        layout: horizontal;
+        height: 1fr;
+        width: 1fr;
     }
     #runner-tree {
         width: 28;
+        height: 1fr;
         border-right: solid $accent-darken-1;
     }
     #runner-right {
         width: 1fr;
-        height: 100%;
+        height: 1fr;
+        layout: vertical;
     }
     #runner-toolbar {
         height: 3;
@@ -41,25 +46,18 @@ class RunnerTab(Horizontal):
         margin: 1 0 0 0;
         color: $text-muted;
     }
-    #run-btn {
-        width: 12;
-    }
+    #run-btn { width: 12; }
     #editor-pane {
         height: 1fr;
         border-bottom: solid $accent-darken-1;
     }
+    #output-log { height: 1fr; }
     #preview-scroll {
         height: 1fr;
         overflow-y: auto;
         padding: 1 2;
     }
-    #md-preview {
-        height: auto;
-    }
-    #output-log {
-        height: 1fr;
-        overflow-y: auto;
-    }
+    #md-preview { height: auto; }
     #runner-hint {
         height: 1;
         background: $panel-darken-1;
@@ -72,87 +70,81 @@ class RunnerTab(Horizontal):
         super().__init__(*args, **kwargs)
         self._root_path = root_path
         self._current_file: Path | None = None
-        self._mode: str = "none"  # "python" | "markdown" | "none"
+        self._mode: str = "none"
 
     def compose(self) -> ComposeResult:
         yield FilteredDirectoryTree(self._root_path, id="runner-tree")
-
         with Vertical(id="runner-right"):
-            # Toolbar
             with Horizontal(id="runner-toolbar"):
-                yield Static("Select a .py or .md file from the tree", id="file-label", markup=True)
+                yield Static("Select a [bold].py[/bold] or [bold].md[/bold] file from the tree →", id="file-label", markup=True)
                 yield Button("▶ Run", id="run-btn", variant="success", disabled=True)
-
-            # Editor (always visible, shows file content)
             yield TextArea("", id="editor-pane", language="python")
-
-            # Output: either RichLog (Python) or Markdown preview
             yield RichLog(id="output-log", highlight=True, markup=True)
             with ScrollableContainer(id="preview-scroll"):
                 yield Markdown("", id="md-preview")
-
             yield Static(
-                " [Ctrl+R] run python  |  .md files preview automatically",
+                " [Ctrl+R] run python  |  .md previews automatically as you type",
                 id="runner-hint",
                 markup=True,
             )
 
     def on_mount(self) -> None:
-        # Start with preview hidden, log visible
-        self._set_mode("none")
-
-    # ── File selection ─────────────────────────────────────────────────────────
+        self._set_output_mode("log")
+        log = self.query_one("#output-log", RichLog)
+        log.write("[dim]Select a [bold].py[/bold] or [bold].md[/bold] file from the tree on the left.[/dim]")
 
     def on_directory_tree_file_selected(self, event: FilteredDirectoryTree.FileSelected) -> None:
         path = Path(event.path)
         try:
             content = path.read_text(encoding="utf-8")
         except Exception as e:
-            self.app.notify(f"Cannot read file: {e}", severity="error")
+            self.app.notify(f"Cannot read: {e}", severity="error")
             return
 
         self._current_file = path
         editor = self.query_one("#editor-pane", TextArea)
         editor.text = content
-
         label = self.query_one("#file-label", Static)
 
         if path.suffix == ".py":
-            self._set_mode("python")
+            self._mode = "python"
             editor.language = "python"
-            label.update(f"[bold cyan]🐍 {path.name}[/bold cyan]  [dim](Ctrl+R to run)[/dim]")
+            self._set_output_mode("log")
+            label.update(f"[bold cyan]🐍 {path.name}[/bold cyan]  [dim]Ctrl+R to run[/dim]")
             log = self.query_one("#output-log", RichLog)
             log.clear()
-            log.write(f"[dim]Loaded [bold]{path.name}[/bold] — press [bold]▶ Run[/bold] or Ctrl+R to execute.[/dim]")
+            log.write(f"[dim]Loaded [bold]{path.name}[/bold] — press ▶ Run or Ctrl+R.[/dim]")
+            self.query_one("#run-btn", Button).disabled = False
 
         elif path.suffix == ".md":
-            self._set_mode("markdown")
+            self._mode = "markdown"
             editor.language = "markdown"
-            label.update(f"[bold magenta]📝 {path.name}[/bold magenta]  [dim](live preview)[/dim]")
+            self._set_output_mode("preview")
+            label.update(f"[bold magenta]📝 {path.name}[/bold magenta]  [dim]live preview[/dim]")
             self.query_one("#md-preview", Markdown).update(content)
+            self.query_one("#run-btn", Button).disabled = True
 
         else:
-            self._set_mode("other")
-            editor.language = "python"  # fallback syntax
+            self._mode = "other"
+            editor.language = "python"
+            self._set_output_mode("log")
             label.update(f"[dim]{path.name}[/dim]")
+            self.query_one("#run-btn", Button).disabled = True
 
         self.app.notify(f"Opened {path.name}")
 
-    # ── Live Markdown preview while editing ────────────────────────────────────
-
     def on_text_area_changed(self, event: TextArea.Changed) -> None:
         if self._mode == "markdown":
-            content = self.query_one("#editor-pane", TextArea).text
-            self.query_one("#md-preview", Markdown).update(content)
-
-    # ── Run Python ─────────────────────────────────────────────────────────────
+            self.query_one("#md-preview", Markdown).update(
+                self.query_one("#editor-pane", TextArea).text
+            )
 
     @on(Button.Pressed, "#run-btn")
     def _on_run_btn(self) -> None:
         self._run_python()
 
     def on_key(self, event) -> None:
-        if event.key == "ctrl+r" and self._mode == "python":
+        if event.key == "ctrl+r":
             self._run_python()
 
     def _run_python(self) -> None:
@@ -161,19 +153,16 @@ class RunnerTab(Horizontal):
         code = self.query_one("#editor-pane", TextArea).text
         log  = self.query_one("#output-log", RichLog)
         log.clear()
-
         name = self._current_file.name if self._current_file else "<buffer>"
         log.write(f"[bold dim]─── Running {name} ───[/bold dim]")
 
-        old_stdout, old_stderr = sys.stdout, sys.stderr
+        old_out, old_err = sys.stdout, sys.stderr
         sys.stdout = io.StringIO()
         sys.stderr = io.StringIO()
-
         try:
             exec(compile(code, name, "exec"), {"__file__": str(self._current_file)})  # noqa: S102
             out = sys.stdout.getvalue()
             err = sys.stderr.getvalue()
-
             for line in out.splitlines():
                 log.write(f"[white]{line}[/white]")
             for line in err.splitlines():
@@ -181,32 +170,14 @@ class RunnerTab(Horizontal):
             if not out and not err:
                 log.write("[dim](no output)[/dim]")
             log.write("[bold green]✓ Done[/bold green]")
-
         except Exception:
             for line in traceback.format_exc().splitlines():
                 log.write(f"[bold red]{line}[/bold red]")
             log.write("[bold red]✗ Error[/bold red]")
-
         finally:
-            sys.stdout = old_stdout
-            sys.stderr = old_stderr
+            sys.stdout = old_out
+            sys.stderr = old_err
 
-    # ── Layout helpers ─────────────────────────────────────────────────────────
-
-    def _set_mode(self, mode: str) -> None:
-        self._mode = mode
-        run_btn      = self.query_one("#run-btn", Button)
-        output_log   = self.query_one("#output-log", RichLog)
-        preview_wrap = self.query_one("#preview-scroll")
-
-        run_btn.disabled = (mode != "python")
-
-        if mode == "python":
-            output_log.display  = True
-            preview_wrap.display = False
-        elif mode == "markdown":
-            output_log.display  = False
-            preview_wrap.display = True
-        else:
-            output_log.display  = True
-            preview_wrap.display = False
+    def _set_output_mode(self, mode: str) -> None:
+        self.query_one("#output-log", RichLog).display   = (mode == "log")
+        self.query_one("#preview-scroll").display         = (mode == "preview")
