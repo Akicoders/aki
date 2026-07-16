@@ -628,12 +628,34 @@ def _render_header(snapshot: CockpitSnapshot) -> Panel:
     git_summary = snapshot.git_summary
     branch = git_summary.branch or "n/a"
     dirty = "dirty" if git_summary.is_dirty else ("clean" if git_summary.is_dirty is False else "unknown")
-    lines = [
-        f"[bold cyan]{snapshot.project.key}[/bold cyan]",
-        f"Root: [cyan]{snapshot.project.root_path}[/cyan]",
-        f"Source: [yellow]{snapshot.project.source}[/yellow] | Branch: [yellow]{branch}[/yellow] | State: [yellow]{dirty}[/yellow] | Refreshed: [dim]{snapshot.generated_at:%Y-%m-%d %H:%M:%S}[/dim]",
-    ]
-    return Panel("\n".join(lines), title="Operational Cockpit", border_style="cyan")
+
+    ascii_art = (
+        "[bold cyan]"
+        "██████╗ ██╗  ██╗██╗\n"
+        "██╔══██╗██║ ██╔╝██║\n"
+        "███████║█████╔╝ ██║\n"
+        "██╔══██║██╔═██╗ ██║\n"
+        "██║  ██║██║  ██╗██║\n"
+        "╚═╝  ╚═╝╚═╝  ╚═╝╚═╝"
+        "[/bold cyan]"
+    )
+
+    info_text = (
+        f"[bold white]Project :[/bold white] [bold yellow]{snapshot.project.key}[/bold yellow]\n"
+        f"[bold white]Root    :[/bold white] [cyan]{snapshot.project.root_path}[/cyan]\n"
+        f"[bold white]Source  :[/bold white] [yellow]{snapshot.project.source}[/yellow] | "
+        f"[bold white]Branch  :[/bold white] [magenta]{branch}[/magenta] | "
+        f"[bold white]State   :[/bold white] [green]{dirty}[/green]\n"
+        f"[bold white]Refreshed:[/bold white] [dim]{snapshot.generated_at:%Y-%m-%d %H:%M:%S}[/dim]"
+    )
+
+    # Use a grid for side-by-side layout
+    table = Table.grid(expand=True)
+    table.add_column(ratio=2)
+    table.add_column(ratio=3)
+    table.add_row(ascii_art, info_text)
+
+    return Panel(table, title="[bold cyan]AKI OPERATIONAL COCKPIT[/bold cyan]", border_style="cyan")
 
 
 def _render_footer() -> Panel:

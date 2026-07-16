@@ -147,6 +147,39 @@ def _format_status(message: str) -> str:
     return f"[bold cyan]{message}...[/bold cyan]"
 
 
+def safe_status(console_obj, message: str, spinner: str = "dots"):
+    try:
+        return console_obj.status(message, spinner=spinner)
+    except TypeError:
+        return console_obj.status(message)
+
+
+def ask_selection(question: str, options: list[str], default: str = "") -> str:
+    """Display options in a beautiful Panel and ask user to choose."""
+    lines = []
+    for i, opt in enumerate(options, 1):
+        indicator = "▶" if (opt == default or str(i) == default) else " "
+        lines.append(f"  {indicator} [[bold cyan]{i}[/bold cyan]] {opt}")
+
+    panel = Panel(
+        "\n".join(lines),
+        title=f"[bold magenta]{question}[/bold magenta]",
+        border_style="cyan",
+        expand=False
+    )
+    console.print(panel)
+
+    valid_choices = [str(i) for i in range(1, len(options) + 1)]
+    if default is not None:
+        valid_choices.append("")
+
+    while True:
+        choice = Prompt.ask(f"Select option [1-{len(options)}] (or press Enter to skip)", default=default or "")
+        if choice.strip() in valid_choices:
+            return choice.strip()
+        console.print("[red]Invalid choice. Please select a valid option.[/red]")
+
+
 def _get_agent():
     from agentos.agent.core import get_agent
 
@@ -239,7 +272,7 @@ def chat(
     """Chat with Aki."""
     project = detect_project(project)
     session = _resolve_session_id(project, _memory(), session, new_session)
-    with console.status(_format_status("Loading memory engine")):
+    with safe_status(console, _format_status("Loading memory engine"), spinner="clock"):
         agent = _get_agent()
     selected_profile = _resolve_cli_profile(agent, profile)
     _print_profile_header(selected_profile)
@@ -247,7 +280,7 @@ def chat(
     async def run():
         response = ""
 
-        with console.status(_format_status("Collecting project context")) as status:
+        with safe_status(console, _format_status("Collecting project context"), spinner="earth") as status:
             def update_status(message: str) -> None:
                 status.update(_format_status(message))
 
@@ -288,7 +321,7 @@ def interactive(
 ):
     """Start interactive chat session."""
     project = detect_project(project)
-    with console.status(_format_status("Loading memory engine")):
+    with safe_status(console, _format_status("Loading memory engine"), spinner="clock"):
         agent = _get_agent()
     selected_profile = _resolve_cli_profile(agent, profile)
     session_id = _resolve_session_id(project, _memory(), session, new_session)
@@ -718,8 +751,10 @@ def cockpit_callback(
             )
             return
         if interactive:
-            exit_code = run_cockpit_loop(console, resolved)
-            raise typer.Exit(exit_code)
+            from agentos.cockpit.tui.app import AkiCockpitApp
+            app = AkiCockpitApp(resolved)
+            app.run()
+            raise typer.Exit(0)
         render_cockpit_overview(console, resolved)
 
 
@@ -828,7 +863,8 @@ def projects_browse(
     if no_interactive:
         return
 
-    choice = Prompt.ask("Select a project number to open (or press Enter to skip)", default="")
+    project_options = [f"{record.key} ({record.root_path})" for record, _, _ in rows]
+    choice = ask_selection("Select a project to open", project_options, default="")
     if not choice.strip():
         return
 
@@ -891,7 +927,7 @@ def audit_project(
 
     generated_at = datetime.now()
     ctx = AuditContext(project=project_ref, root_path=project_ref.root_path, generated_at=generated_at)
-    status_cm = console.status(_format_status("Running deep audit pass...")) if deep else nullcontext()
+    status_cm = safe_status(console, _format_status("Running deep audit pass..."), spinner="aesthetic") if deep else nullcontext()
     with status_cm:
         pass_results = run_registered_passes(ctx, passes)
     findings = merge_findings(pass_results)
@@ -929,7 +965,7 @@ def _print_interactive_header(
     ))
 
     try:
-        with console.status(_format_status("Collecting project context")):
+        with safe_status(console, _format_status("Collecting project context"), spinner="earth"):
             context = run_async_cmd(agent.recall("", project))
         if context.facts:
             facts_text = "\n".join(
@@ -997,6 +1033,76 @@ def sdd_init(
     console.print("  4. Break work into tasks in [cyan]docs/sdd/tasks.md[/cyan]")
 
 
+@app.command("salvage")
+def salvage_project(
+    project_dir: Optional[Path] = typer.Option(None, "--dir", "-d", help="Project directory (default: cwd)"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Run diagnostics without performing fixes"),
+):
+    """Diagnose chaos and restore project health.
+
+    This command runs checks for missing config/env files, Git repo state,
+    SDD artifacts, test files, and merge conflict markers. It generates
+    an 'aki_diagnose.md' report in the project root.
+    """
+    target = project_dir or Path.cwd()
+    
+    from agentos.cockpit.salvage.logic import ChaosReport, perform_salvage_fixes
+    
+    console.print(f"[cyan]Running salvage diagnostics on {target.resolve()}...[/cyan]")
+    
+    report = ChaosReport(target)
+    report.run_diagnosis()
+    
+    # Render report summary using Rich
+    console.print()
+    console.print(Panel(
+        f"[bold]Aki Salvage Diagnostics Summary[/bold]\n\n"
+        f"Git repository: {'[green]Yes[/green]' if report.is_git_repo else '[red]No[/red]'}\n"
+        f"SDD directory: {'[green]' + report.sdd_dir + '[/green]' if report.sdd_dir else '[red]Missing[/red]'}\n"
+        f"Tests directory: {'[green]Yes[/green]' if report.has_tests_dir else '[red]No[/red]'}\n"
+        f"Test files: [cyan]{report.test_files_count}[/cyan]\n"
+        f"Config files: config.yaml ({'[green]Yes[/green]' if report.has_config_yaml else '[red]No[/red]'}), .env ({'[green]Yes[/green]' if report.has_env else '[red]No[/red]'})\n"
+        f"Conflict markers: {'[red]Yes[/red]' if report.files_with_conflicts else '[green]None[/green]'}",
+        title="Diagnostic Check",
+        border_style="cyan" if not report.files_with_conflicts else "red",
+    ))
+    
+    # Warn about conflicts immediately if any exist
+    if report.files_with_conflicts:
+        console.print("\n[bold red]CRITICAL: Git conflict markers detected in the following files:[/bold red]")
+        for file in report.files_with_conflicts:
+            console.print(f"  - [red]{file}[/red]")
+        console.print("[yellow]Please resolve these conflict markers manually.[/yellow]")
+
+    # Write markdown report
+    report_file = report.write_report_file()
+    console.print(f"\n[green]✓[/green] Written detailed diagnosis report to [cyan]{report_file.name}[/cyan]")
+    
+    if dry_run:
+        console.print("\n[yellow]Dry-run mode: no repairs attempted.[/yellow]")
+        return
+        
+    # Check if there are fixable issues
+    has_fixes = not report.has_env or not report.has_config_yaml or (report.is_git_repo and not (target / ".gitignore").is_file())
+    if not has_fixes:
+        console.print("\n[green]No fixable configuration issues detected.[/green]")
+        return
+        
+    # Ask for confirmation
+    confirm = typer.confirm("\nDo you want to automatically apply recommended fixes (e.g. restoring missing configs/gitignore)?", default=True)
+    if not confirm:
+        console.print("\n[yellow]Salvage fixes cancelled by user.[/yellow]")
+        return
+        
+    fixes = perform_salvage_fixes(report)
+    if fixes:
+        console.print("\n[bold green]Applied fixes:[/bold green]")
+        for fix in fixes:
+            console.print(f"  [green]✓[/green] {fix}")
+    else:
+        console.print("\n[yellow]No fixes were applied.[/yellow]")
+
+
 async def _async_interactive(agent, project, session_id, profile_id: Optional[str] = None):
     from agentos.skills.scheduler import run_task_dispatcher
     from agentos.memory.repository import MemoryRepository
@@ -1018,7 +1124,14 @@ async def _async_interactive(agent, project, session_id, profile_id: Optional[st
     try:
         while True:
             try:
-                user_input = Prompt.ask("[bold green]You[/bold green]")
+                console.print()
+                console.print(Panel(
+                    "[dim]Type your message / command and press Enter. To exit type [bold]quit[/bold].[/dim]",
+                    title="[bold green]⌨️ You (Aki Chat Input)[/bold green]",
+                    border_style="green",
+                    expand=True,
+                ))
+                user_input = Prompt.ask("❯ ")
                 if user_input.lower() in ("exit", "quit", "/exit", "/quit"):
                     console.print("[dim]Goodbye![/dim]")
                     break
@@ -1029,7 +1142,7 @@ async def _async_interactive(agent, project, session_id, profile_id: Optional[st
                     await _handle_command(user_input, agent, project, session_id)
                     continue
 
-                with console.status(_format_status("Starting turn")) as status:
+                with safe_status(console, _format_status("Starting turn"), spinner="dots12") as status:
                     def update_status(message: str) -> None:
                         status.update(_format_status(message))
 
@@ -1243,7 +1356,7 @@ def agents():
 
     for profile in profiles:
         tools = "deny-all" if profile.tools.deny_all else ", ".join(profile.tools.allowed)
-        delegation = "metadata only" if profile.delegation.enabled else "off"
+        delegation = "on" if profile.delegation.enabled else "off"
         table.add_row(
             profile.id,
             profile.name,

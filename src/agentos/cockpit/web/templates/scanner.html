@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}Aki Cockpit - Project Scanner{% endblock %}
+{% block header %}Project Scanner{% endblock %}
+
+{% block content %}
+<div class="panel">
+  <h2>Scan Directory for Projects</h2>
+  <form id="scanner-form" method="get" action="/scanner">
+    <div style="display: flex; gap: 1rem; align-items: center; margin-top: 1rem;">
+      <label for="scanner-path-input" style="font-family: var(--font-title); font-weight: 500;">Target Directory:</label>
+      <input type="text" 
+             id="scanner-path-input" 
+             name="target_dir" 
+             value="{{ target_dir }}" 
+             placeholder="/home/akidev/proyects" 
+             style="flex-grow: 1; padding: 0.6rem 1rem; border-radius: 8px; border: 1px solid var(--border-card); background: rgba(0,0,0,0.2); color: var(--text-main); font-family: var(--font-body);"
+             required>
+      <button type="submit" id="scanner-submit-btn" class="btn btn-primary">Scan Directory</button>
+    </div>
+  </form>
+</div>
+
+{% if message %}
+<div class="panel" style="background: rgba(63, 185, 80, 0.1); border-color: rgba(63, 185, 80, 0.3);">
+  <p style="color: var(--accent-green); margin: 0; font-weight: 600;">{{ message }}</p>
+</div>
+{% endif %}
+
+<div class="panel">
+  <h2>Discovered Directories</h2>
+  {% if scanned_dirs %}
+  <div style="overflow-x: auto; width: 100%;">
+    <table style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr>
+          <th>Directory Name</th>
+          <th style="min-width: 250px;">Path</th>
+          <th>Git Repo</th>
+          <th>SDD Spec</th>
+          <th>Tests</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in scanned_dirs %}
+        <tr>
+          <td style="font-weight: 600; font-family: var(--font-title); white-space: nowrap;">{{ item.name }}</td>
+          <td style="color: var(--text-muted); word-break: break-all; max-width: 350px;">{{ item.path }}</td>
+          <td>
+            {% if item.has_git %}
+              <span class="badge badge-success" id="git-badge-{{ loop.index }}">Git detected</span>
+            {% else %}
+              <span class="badge badge-error" id="git-badge-{{ loop.index }}">No Git</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if item.has_sdd %}
+              <span class="badge badge-success" id="sdd-badge-{{ loop.index }}">SDD detected</span>
+            {% else %}
+              <span class="badge badge-error" id="sdd-badge-{{ loop.index }}">No SDD</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if item.has_tests %}
+              <span class="badge badge-success" id="tests-badge-{{ loop.index }}">Tests found</span>
+            {% else %}
+              <span class="badge badge-error" id="tests-badge-{{ loop.index }}">No tests</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if item.is_registered %}
+              <span class="badge badge-info" id="status-badge-{{ loop.index }}">Registered</span>
+            {% else %}
+              <span class="badge badge-warning" id="status-badge-{{ loop.index }}">Unregistered</span>
+            {% endif %}
+          </td>
+          <td style="white-space: nowrap;">
+            {% if not item.is_registered %}
+              <a href="/scanner?action=register&register_path={{ item.path }}&register_key={{ item.name }}&target_dir={{ target_dir }}" 
+                 id="register-btn-{{ loop.index }}" 
+                 class="btn btn-primary btn-sm"
+                 style="padding: 0.3rem 0.7rem; font-size: 0.8rem;">
+                Register
+              </a>
+            {% else %}
+              <a href="/project/{{ item.name }}" 
+                 id="view-btn-{{ loop.index }}" 
+                 class="btn btn-secondary btn-sm"
+                 style="padding: 0.3rem 0.7rem; font-size: 0.8rem;">
+                Open Cockpit
+              </a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p style="color: var(--text-muted); text-align: center; padding: 2rem;">No directories scanned or found. Provide a valid directory above.</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -26,7 +26,10 @@ def _profile(
     *,
     allowed: list[str] | None = None,
     memory_scope: str = "project",
+    delegation_enabled: bool = True,
 ) -> AgentProfile:
+    from agentos.agents import DelegationMetadata
+
     return AgentProfile(
         id=profile_id,
         name=profile_id,
@@ -35,6 +38,7 @@ def _profile(
         prompt_template=f"You are the {profile_id} agent.",
         tools=ToolPolicy(allowed=allowed or ["memory.recall"]),
         memory=MemoryPolicy(scope=memory_scope),
+        delegation=DelegationMetadata(enabled=delegation_enabled),
     )
 
 
@@ -393,6 +397,107 @@ async def test_worker_nested_loop_emits_generic_tool_status_shape(monkeypatch):
     rendered = "\n".join(statuses)
     for forbidden in ("worker", "supervisor", "delegate", "delegation"):
         assert forbidden not in rendered.lower()
+
+
+@pytest.mark.asyncio
+async def test_delegation_disabled_profile_does_not_get_delegate_tool(monkeypatch):
+    """Profiles with `delegation.enabled=False` must never see the synthetic
+    `delegate` schema in the outgoing tools list -- the exposure gate."""
+    monkeypatch.setattr(agent_core.AgentOS, "_init_skills", lambda self: None)
+    monkeypatch.setattr(agent_core, "create_event", lambda **_kwargs: None)
+
+    qwen = ScriptedQwenClient([_response("plain response, no delegate tool offered")])
+    skills = ScriptedSkills()
+    agent = agent_core.AgentOS(
+        config=AgentConfig(max_iterations=3),
+        qwen_client=qwen,
+        memory=_NullMemory(),
+        skill_registry=skills,
+        agent_registry=AgentRegistry([
+            _profile("supervisor", delegation_enabled=False),
+            _profile("worker"),
+        ]),
+    )
+
+    response = await agent.chat(
+        "please delegate", project="demo", session_id="sess-9", profile_id="supervisor"
+    )
+
+    assert response == "plain response, no delegate tool offered"
+    tool_names = [t["function"]["name"] for t in qwen.calls[0]["tools"]]
+    assert "delegate" not in tool_names
+
+
+@pytest.mark.asyncio
+async def test_delegation_disabled_profile_defensive_guard_rejects_stale_call(monkeypatch):
+    """Defense in depth: even if a `delegate` tool call somehow reaches
+    `_run_delegation` for a profile with delegation disabled (e.g. a stale
+    tool-call replayed from conversation history), execution must be refused
+    with a clear error instead of running the worker loop."""
+    monkeypatch.setattr(agent_core.AgentOS, "_init_skills", lambda self: None)
+    monkeypatch.setattr(agent_core, "create_event", lambda **_kwargs: None)
+
+    qwen = ScriptedQwenClient([
+        _response("", tool_calls=[_delegate_tool_call("call-1", "worker")]),
+        _response("supervisor final answer"),
+    ])
+    skills = ScriptedSkills()
+    agent = agent_core.AgentOS(
+        config=AgentConfig(max_iterations=3),
+        qwen_client=qwen,
+        memory=_NullMemory(),
+        skill_registry=skills,
+        agent_registry=AgentRegistry([
+            _profile("supervisor", delegation_enabled=False),
+            _profile("worker"),
+        ]),
+    )
+
+    await agent.chat(
+        "please delegate", project="demo", session_id="sess-10", profile_id="supervisor"
+    )
+
+    # Only two qwen.chat calls: the (hallucinated/stale) delegate call and the
+    # supervisor's resumption. No nested worker loop was ever invoked.
+    assert len(qwen.calls) == 2
+    resumed_messages = qwen.calls[1]["messages"]
+    tool_result = next(m for m in resumed_messages if m.get("role") == "tool")
+    assert tool_result["tool_call_id"] == "call-1"
+    assert "disabled" in tool_result["content"]
+    assert "supervisor" in tool_result["content"]
+
+
+@pytest.mark.asyncio
+async def test_delegation_enabled_profile_still_delegates(monkeypatch):
+    """Regression guard: profiles with `delegation.enabled=True` (the
+    default) retain the pre-gating behavior end to end."""
+    monkeypatch.setattr(agent_core.AgentOS, "_init_skills", lambda self: None)
+    monkeypatch.setattr(agent_core, "create_event", lambda **_kwargs: None)
+
+    qwen = ScriptedQwenClient([
+        _response("", tool_calls=[_delegate_tool_call("call-1", "worker")]),
+        _response("worker done"),
+        _response("supervisor final answer"),
+    ])
+    skills = ScriptedSkills()
+    agent = agent_core.AgentOS(
+        config=AgentConfig(max_iterations=3),
+        qwen_client=qwen,
+        memory=_NullMemory(),
+        skill_registry=skills,
+        agent_registry=AgentRegistry([
+            _profile("supervisor", delegation_enabled=True),
+            _profile("worker"),
+        ]),
+    )
+
+    response = await agent.chat(
+        "please delegate", project="demo", session_id="sess-11", profile_id="supervisor"
+    )
+
+    assert response == "supervisor final answer"
+    tool_names = [t["function"]["name"] for t in qwen.calls[0]["tools"]]
+    assert "delegate" in tool_names
 
 
 class _NullMemory:

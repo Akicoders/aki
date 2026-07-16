@@ -100,7 +100,7 @@
   <!-- Cloud icon -->
   <path d="M306,452 Q306,447 312,447 Q314,442 319,442 Q324,442 326,447 Q332,447 332,452 Z" stroke="#CB7C94" stroke-width="1.2" fill="none"/>
   <text x="328" y="449" font-size="14" font-weight="600" fill="#F3F6F9">Qwen Cloud</text>
-  <text x="328" y="468" font-size="9" fill="#A1AABB">DashScope API · QwQ-32B</text>
+  <text x="328" y="468" font-size="9" fill="#A1AABB">DashScope API · Qwen3.6 Plus</text>
 
   <!-- ===== ROW 4c: Cockpit · Audit · Registry (x=530, w=220, center=640) ===== -->
   <rect x="530" y="425" width="220" height="55" rx="8" fill="#1c212c" stroke="#313342" stroke-width="1"/>

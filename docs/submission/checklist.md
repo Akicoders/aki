@@ -57,7 +57,7 @@ Add these callout bullets next to the diagram:
 - Local-first project memory.
 - Project-scoped retrieval for coding agents.
 - Qwen-powered extraction from unstructured text.
-- Core memory flows still work without Qwen credentials.
+- Core memory tools (`memory_context`, `memory_search`, `memory_save`) still work without Qwen credentials — extraction and explanation degrade gracefully instead of crashing. Note: the conversational agent (`aki chat` / Cockpit chat) itself requires Qwen, since it's the model doing the reasoning.
 - Alibaba Cloud deployment used for submission proof.
 
 ## Proof-of-Deployment Screenshot Guidance

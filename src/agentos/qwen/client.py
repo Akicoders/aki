@@ -16,6 +16,19 @@ from agentos.core.config import get_config, QwenConfig
 
 logger = logging.getLogger(__name__)
 
+# Known Qwen model identifiers used by this project (pulled from config.yaml's
+# qwen.model / qwen.extraction_model / qwen.consolidation_model and the
+# QwenConfig default in core/config.py). This is not an exhaustive list of
+# every model DashScope offers — just the variants this codebase has actually
+# been configured/tested with. The Cockpit model selector lets users pick one
+# of these or type a custom string, since QwenClient.chat() accepts any
+# `model` override without validation.
+KNOWN_QWEN_MODELS: list[str] = [
+    "qwen3.7-max",
+    "qwen3.7-plus",
+    "qwen-max",
+]
+
 
 def _before_sleep_callback(retry_state):
     """Notify connection attempts to the UI status callback if present."""

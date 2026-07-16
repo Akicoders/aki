@@ -84,10 +84,20 @@ def test_cockpit_interactive_flag_runs_navigation_loop(tmp_path, monkeypatch):
     (project_root / "pyproject.toml").write_text("[project]\nname='interactive-project'\n", encoding="utf-8")
     monkeypatch.chdir(project_root)
 
-    result = runner.invoke(app, ["cockpit", "--interactive"], input="q\n")
+    # Mock the Textual app's run method so it doesn't try to draw to the terminal in tests
+    run_called = False
+    
+    def fake_run(self, *args, **kwargs):
+        nonlocal run_called
+        run_called = True
+        return None
+        
+    monkeypatch.setattr("agentos.cockpit.tui.app.AkiCockpitApp.run", fake_run)
+
+    result = runner.invoke(app, ["cockpit", "--interactive"])
 
     assert result.exit_code == 0
-    assert "Operational Cockpit" in result.output
+    assert run_called is True
 
 
 def runner_console():

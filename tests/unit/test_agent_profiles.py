@@ -89,17 +89,20 @@ class TestAgentProfile:
         with pytest.raises(ValidationError, match="deny_all"):
             ToolPolicy()
 
-    def test_delegation_metadata_is_inert_by_default(self):
+    def test_delegation_metadata_defaults_to_enabled(self):
+        """Default is `enabled=True` to preserve pre-gating behavior (the
+        `delegate` tool was previously always exposed regardless of this
+        field) for profiles that don't explicitly opt out."""
         profile = _profile()
 
-        assert profile.delegation == DelegationMetadata(enabled=False)
+        assert profile.delegation == DelegationMetadata(enabled=True)
 
-    def test_delegation_metadata_can_be_stored_without_execution_hooks(self):
+    def test_delegation_metadata_can_be_explicitly_disabled(self):
         profile = _profile().model_copy(
-            update={"delegation": DelegationMetadata(enabled=True, strategy="future-review-chain")}
+            update={"delegation": DelegationMetadata(enabled=False, strategy="future-review-chain")}
         )
 
-        assert profile.delegation.enabled is True
+        assert profile.delegation.enabled is False
         assert profile.delegation.strategy == "future-review-chain"
 
 

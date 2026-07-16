@@ -196,13 +196,13 @@ def test_root_command_opens_cockpit_overview_for_project(tmp_path, monkeypatch):
     result = runner.invoke(app, [])
 
     assert result.exit_code == 0
-    assert "Operational Cockpit" in result.output
+    assert "OPERATIONAL COCKPIT" in result.output.upper()
     assert "Action Required" in result.output
     assert "Project Health" in result.output
     assert "Memory" in result.output
     assert "SDD Status" in result.output
     assert project_root.name in result.output
-    assert "Root:" in result.output
+    assert "Root" in result.output
 
 
 def test_cockpit_web_flag_dispatches_to_run_server(tmp_path, monkeypatch):
@@ -223,7 +223,7 @@ def test_cockpit_web_flag_dispatches_to_run_server(tmp_path, monkeypatch):
     assert len(calls) == 1
     assert calls[0].host == "127.0.0.1"
     assert calls[0].port == 9001
-    assert "Operational Cockpit" not in result.output
+    assert "OPERATIONAL COCKPIT" not in result.output.upper()
 
 
 def test_cockpit_web_flag_reports_port_conflict_cleanly(tmp_path, monkeypatch):
@@ -261,7 +261,7 @@ def test_cockpit_without_web_flag_still_renders_terminal_cockpit(tmp_path, monke
 
     assert result.exit_code == 0
     assert calls == []
-    assert "Operational Cockpit" in result.output
+    assert "OPERATIONAL COCKPIT" in result.output.upper()
 
 
 def test_root_command_falls_back_to_projects_browse(tmp_path, monkeypatch):
@@ -344,4 +344,4 @@ def test_projects_browse_command_select_opens_cockpit(tmp_path, monkeypatch):
 
     assert result.exit_code == 0
     assert "Known Projects" in result.output
-    assert "Operational Cockpit" in result.output
+    assert "OPERATIONAL COCKPIT" in result.output.upper()

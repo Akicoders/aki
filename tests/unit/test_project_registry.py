@@ -87,3 +87,19 @@ def test_touch_functions_return_none_for_unknown_project(registry_db, tmp_path):
 
     assert registry.touch_last_opened(unknown, database=registry_db) is None
     assert registry.touch_last_audit(unknown, database=registry_db) is None
+
+
+def test_delete_project_removes_record(registry_db, tmp_path):
+    root = tmp_path / "repo-to-delete"
+    root.mkdir()
+    registry.upsert_project("repo-to-delete", root, source="git", database=registry_db)
+
+    assert len(registry.list_projects(database=registry_db)) == 1
+
+    # Delete existing
+    assert registry.delete_project(root, database=registry_db) is True
+    assert len(registry.list_projects(database=registry_db)) == 0
+
+    # Delete non-existing
+    assert registry.delete_project(root, database=registry_db) is False
+
