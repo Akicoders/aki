@@ -11,6 +11,48 @@ info() {
   printf '%s\n' "$1"
 }
 
+AKI_REPO_URL="https://github.com/Akicoders/aki.git"
+
+# When this script is piped straight into a shell (curl -fsSL .../install.sh |
+# sh), there is no local checkout yet: $0 is not a real script path (it's
+# "sh", "/dev/stdin", or similar), and even when it does resolve to a path,
+# that directory may just hold this one file, not a full clone. Detect that
+# case by checking for pyproject.toml next to the script; if it's missing,
+# clone the repo into ./aki in the current directory and re-run install.sh
+# from inside the clone. A normal `sh install.sh` run from an existing clone
+# always finds pyproject.toml next to it and skips this entirely.
+self_clone_if_needed() {
+  candidate_dir=""
+  case "$0" in
+    */*)
+      candidate_dir="$(CDPATH= cd -- "$(dirname "$0")" 2>/dev/null && pwd)" || candidate_dir=""
+      ;;
+  esac
+
+  if [ -n "$candidate_dir" ] && [ -f "$candidate_dir/pyproject.toml" ]; then
+    return 0
+  fi
+
+  info "Standalone run detected (no local Aki checkout next to this script)."
+
+  command -v git >/dev/null 2>&1 || fail "git is required to clone Aki. Install git and re-run."
+
+  if [ -d "aki" ]; then
+    if [ -f "aki/pyproject.toml" ]; then
+      info "Found an existing ./aki checkout; using it."
+    else
+      fail "./aki already exists but doesn't look like an Aki checkout. Remove or rename it, then re-run."
+    fi
+  else
+    info "Cloning Aki into ./aki..."
+    git clone --depth 1 "$AKI_REPO_URL" aki || fail "git clone failed."
+  fi
+
+  cd aki || fail "Could not enter ./aki after cloning."
+  info "Continuing install from ./aki..."
+  exec sh install.sh "$@"
+}
+
 resolve_uv() {
   if command -v uv >/dev/null 2>&1; then
     command -v uv
@@ -110,6 +152,8 @@ do_update() {
 if [ "${1:-}" = "--update" ]; then
   do_update
 fi
+
+self_clone_if_needed "$@"
 
 os_name="$(uname -s 2>/dev/null || printf 'unknown')"
 case "$os_name" in

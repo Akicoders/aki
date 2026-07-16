@@ -50,15 +50,16 @@ This repository is intentionally positioned as an **open-source hackathon produc
 
 ### Fastest path: one command
 
-After cloning and syncing deps (step 1 below), run:
+No clone, no manual steps. This clones the repo into `./aki`, installs `uv`
+if needed, syncs dependencies, installs the `aki` CLI as a global tool, and
+runs `aki setup` (config bootstrap + health check) — all in one shot:
 
 ```bash
-uv run aki setup
+curl -fsSL https://raw.githubusercontent.com/Akicoders/aki/main/install.sh | sh
 ```
 
-This chains config bootstrap (`config init`) and a health check (`doctor`) into
-one idempotent step, then prints next-step hints (`aki mcp-setup <host>`,
-`aki chat`, `aki cockpit`). It's safe to re-run at any time.
+It's safe to re-run at any time (idempotent), and works the same way if you
+run it from inside an existing clone (`sh install.sh`) instead of piping it.
 
 If you want manual control, already have a partial setup, or want to pass
 explicit flags (e.g. `--qwen-api-key`), follow the numbered steps below instead.
