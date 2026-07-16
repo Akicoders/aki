@@ -10,6 +10,7 @@ from agentos.cockpit.tui.kanban import KanbanTab
 from agentos.cockpit.tui.runner import RunnerTab, IDE_THEME
 from agentos.cockpit.tui.sdd import SDDHubTab
 from agentos.cockpit.tui.doctor import DoctorTab
+from agentos.cockpit.tui.about import AboutTab
 
 # Default tab order — user can reorder with [ and ]
 DEFAULT_TABS: list[tuple[str, str]] = [
@@ -19,6 +20,7 @@ DEFAULT_TABS: list[tuple[str, str]] = [
     ("tab-runner",   "Runner"),
     ("tab-sdd",      "SDD Hub"),
     ("tab-doctor",   "🩺 Doctor"),
+    ("tab-about",    "❓ About"),
 ]
 
 
@@ -37,15 +39,17 @@ class AkiCockpitApp(App):
     """
 
     BINDINGS = [
-        ("q",       "quit",          "Quit"),
-        ("ctrl+s",  "save",          "Save File"),
-        ("[",       "move_tab_left", "Move Tab ←"),
-        ("]",       "move_tab_right","Move Tab →"),
-        ("1",       "goto_tab('1')", "Tab 1"),
-        ("2",       "goto_tab('2')", "Tab 2"),
-        ("3",       "goto_tab('3')", "Tab 3"),
-        ("4",       "goto_tab('4')", "Tab 4"),
-        ("5",       "goto_tab('5')", "Tab 5"),
+        ("q",       "quit",           "Quit"),
+        ("ctrl+s",  "save",           "Save File"),
+        ("[",       "move_tab_left",  "Move Tab ←"),
+        ("]",       "move_tab_right", "Move Tab →"),
+        ("1",       "goto_tab('1')",  "Tab 1"),
+        ("2",       "goto_tab('2')",  "Tab 2"),
+        ("3",       "goto_tab('3')",  "Tab 3"),
+        ("4",       "goto_tab('4')",  "Tab 4"),
+        ("5",       "goto_tab('5')",  "Tab 5"),
+        ("6",       "goto_tab('6')",  "Tab 6"),
+        ("7",       "goto_tab('7')",  "Tab 7"),
     ]
 
     def __init__(self, project: ProjectRef, *args, **kwargs):
@@ -100,6 +104,10 @@ class AkiCockpitApp(App):
         elif tab_id == "tab-doctor":
             with TabPane(label, id=tab_id):
                 yield DoctorTab(root_path=self.project.root_path)
+
+        elif tab_id == "tab-about":
+            with TabPane(label, id=tab_id):
+                yield AboutTab()
 
     # ── Tab reordering ────────────────────────────────────────────────────────
 

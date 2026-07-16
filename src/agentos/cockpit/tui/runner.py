@@ -14,7 +14,9 @@ from textual.widgets import Button, Markdown, RichLog, Static, TextArea
 
 from agentos.cockpit.tui.components import FilteredDirectoryTree
 
-# Map file extensions -> TextArea language identifiers
+from textual.widgets.text_area import BUILTIN_LANGUAGES
+
+# Map file extensions -> TextArea language identifiers (only BUILTIN_LANGUAGES)
 LANG_MAP: dict[str, str] = {
     ".py":   "python",
     ".js":   "javascript",
@@ -23,6 +25,8 @@ LANG_MAP: dict[str, str] = {
     ".tsx":  "javascript",
     ".css":  "css",
     ".html": "html",
+    ".htm":  "html",
+    ".xml":  "xml",
     ".json": "json",
     ".md":   "markdown",
     ".yaml": "yaml",
@@ -31,9 +35,15 @@ LANG_MAP: dict[str, str] = {
     ".sh":   "bash",
     ".bash": "bash",
     ".sql":  "sql",
+    ".go":   "go",
+    ".rs":   "rust",
+    ".java": "java",
 }
 
-# IDE-style theme for TextArea
+# Only keep languages Textual actually ships with
+LANG_MAP = {k: v for k, v in LANG_MAP.items() if v in BUILTIN_LANGUAGES}
+
+# IDE-style theme
 IDE_THEME = "vscode_dark"
 
 
@@ -133,15 +143,11 @@ class RunnerTab(Widget):
         editor = self.query_one("#editor-pane", TextArea)
         label  = self.query_one("#file-label", Static)
         ext    = path.suffix.lower()
-        lang   = LANG_MAP.get(ext, "")
+        lang   = LANG_MAP.get(ext, "python")  # fallback to python (always valid)
 
-        # Apply language — only set if tree-sitter supports it
-        try:
-            editor.language = lang or None  # type: ignore[assignment]
-        except Exception:
-            editor.language = None  # type: ignore[assignment]
-
-        editor.text  = content
+        # Set language FIRST (before text, so tree-sitter parses correctly)
+        editor.language = lang
+        editor.load_text(content)      # load_text is the correct API for post-mount changes
         editor.theme = IDE_THEME
 
         if ext == ".py":
@@ -163,10 +169,10 @@ class RunnerTab(Widget):
         else:
             self._mode = "other"
             self._set_output_mode("log")
-            label.update(f"[bold]{path.name}[/bold]  [dim]{lang or 'plain text'}[/dim]")
+            label.update(f"[bold]{path.name}[/bold]  [dim]{lang}[/dim]")
             self.query_one("#run-btn", Button).disabled = True
 
-        self.app.notify(f"Opened {path.name}  [{lang or 'text'}]")
+        self.app.notify(f"Opened {path.name}  [{lang}]")
 
     def on_text_area_changed(self, event: TextArea.Changed) -> None:
         if self._mode == "markdown":
